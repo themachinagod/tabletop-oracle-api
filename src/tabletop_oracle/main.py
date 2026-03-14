@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from tabletop_oracle.api.router import api_router
+from tabletop_oracle.auth.middleware import SessionMiddleware
 from tabletop_oracle.config import settings
 from tabletop_oracle.errors.handlers import register_exception_handlers
 from tabletop_oracle.logging import configure_logging
@@ -23,9 +24,9 @@ app = FastAPI(
 # Exception handlers
 register_exception_handlers(app)
 
-# Middleware (order matters — outermost first)
-# Correlation runs first (outermost), then Logging, then CORS.
+# Middleware (order matters -- outermost first)
 # In FastAPI, add_middleware is LIFO: last added = outermost.
+# Execution order: Correlation -> Logging -> Session -> CORS -> Route handler
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[settings.frontend_origin],
@@ -33,6 +34,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(SessionMiddleware)
 app.add_middleware(LoggingMiddleware)
 app.add_middleware(CorrelationMiddleware)
 
