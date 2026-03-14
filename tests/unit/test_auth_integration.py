@@ -141,6 +141,14 @@ def _mock_auth_context(
     return _Ctx()
 
 
+@pytest.fixture(autouse=True)
+def _disable_bypass_auth():
+    """Ensure bypass_auth is disabled for all tests unless explicitly overridden."""
+    with patch("tabletop_oracle.auth.middleware.settings") as mock_settings:
+        mock_settings.bypass_auth = False
+        yield mock_settings
+
+
 @pytest.fixture
 def test_app() -> FastAPI:
     """Provide a test FastAPI app with session middleware."""
@@ -366,13 +374,12 @@ class TestBypassAuth:
     """bypass_auth setting should inject a mock user without DB access."""
 
     @pytest.mark.asyncio
-    async def test_bypass_injects_mock_curator(self) -> None:
-        with patch("tabletop_oracle.auth.middleware.settings") as mock_settings:
-            mock_settings.bypass_auth = True
-            app = _build_app(bypass_auth=True)
-            transport = ASGITransport(app=app)
-            async with AsyncClient(transport=transport, base_url="http://test") as client:
-                resp = await client.get("/api/v1/protected")
+    async def test_bypass_injects_mock_curator(self, _disable_bypass_auth: MagicMock) -> None:
+        _disable_bypass_auth.bypass_auth = True
+        app = _build_app(bypass_auth=True)
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.get("/api/v1/protected")
         assert resp.status_code == 200
         body = resp.json()
         assert body["role"] == "curator"
