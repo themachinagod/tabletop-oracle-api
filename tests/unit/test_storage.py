@@ -1,14 +1,20 @@
 """Unit tests for local blob storage."""
 
+import json
+from pathlib import Path
+
 import pytest
 
-from tabletop_oracle.storage.local import LocalBlobStorage
+from tabletop_oracle.storage.local import _META_SUFFIX, LocalBlobStorage
 
 
 @pytest.fixture
-def storage(tmp_path: object) -> LocalBlobStorage:
+def storage(tmp_path: Path) -> LocalBlobStorage:
     """Create a LocalBlobStorage using a temp directory."""
     return LocalBlobStorage(base_path=str(tmp_path))
+
+
+# --- Basic operations ---
 
 
 @pytest.mark.asyncio
@@ -55,3 +61,87 @@ async def test_store_nested_path(storage: LocalBlobStorage) -> None:
     await storage.store("a/b/c.txt", b"nested", "text/plain")
     data = await storage.retrieve("a/b/c.txt")
     assert data == b"nested"
+
+
+# --- Path traversal prevention ---
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "malicious_key",
+    [
+        "../../etc/passwd",
+        "../secret.txt",
+        "a/../../etc/shadow",
+        "/etc/passwd",
+        "\\etc\\passwd",
+    ],
+)
+async def test_store_rejects_path_traversal(storage: LocalBlobStorage, malicious_key: str) -> None:
+    """store() rejects keys that escape the storage root."""
+    with pytest.raises(ValueError, match="Storage key"):
+        await storage.store(malicious_key, b"data", "text/plain")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "malicious_key",
+    [
+        "../../etc/passwd",
+        "../secret.txt",
+        "/etc/passwd",
+    ],
+)
+async def test_retrieve_rejects_path_traversal(
+    storage: LocalBlobStorage, malicious_key: str
+) -> None:
+    """retrieve() rejects keys that escape the storage root."""
+    with pytest.raises(ValueError, match="Storage key"):
+        await storage.retrieve(malicious_key)
+
+
+@pytest.mark.asyncio
+async def test_exists_rejects_path_traversal(storage: LocalBlobStorage) -> None:
+    """exists() rejects keys that escape the storage root."""
+    with pytest.raises(ValueError, match="Storage key"):
+        await storage.exists("../../etc/passwd")
+
+
+@pytest.mark.asyncio
+async def test_delete_rejects_path_traversal(storage: LocalBlobStorage) -> None:
+    """delete() rejects keys that escape the storage root."""
+    with pytest.raises(ValueError, match="Storage key"):
+        await storage.delete("../../etc/passwd")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("empty_key", ["", "   "])
+async def test_store_rejects_empty_key(storage: LocalBlobStorage, empty_key: str) -> None:
+    """store() rejects empty or whitespace-only keys."""
+    with pytest.raises(ValueError, match="Invalid storage key"):
+        await storage.store(empty_key, b"data", "text/plain")
+
+
+# --- content_type persistence ---
+
+
+@pytest.mark.asyncio
+async def test_store_persists_content_type(storage: LocalBlobStorage, tmp_path: Path) -> None:
+    """store() writes content_type to a sidecar metadata file."""
+    await storage.store("doc.pdf", b"pdf-bytes", "application/pdf")
+
+    meta_path = tmp_path / ("doc.pdf" + _META_SUFFIX)
+    assert meta_path.exists()
+
+    meta = json.loads(meta_path.read_text())
+    assert meta["content_type"] == "application/pdf"
+
+
+@pytest.mark.asyncio
+async def test_delete_removes_metadata(storage: LocalBlobStorage, tmp_path: Path) -> None:
+    """delete() removes the sidecar metadata file alongside the blob."""
+    await storage.store("doc.pdf", b"pdf-bytes", "application/pdf")
+    await storage.delete("doc.pdf")
+
+    meta_path = tmp_path / ("doc.pdf" + _META_SUFFIX)
+    assert not meta_path.exists()
