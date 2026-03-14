@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 from sqlalchemy import Boolean, Integer, String, select
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from tabletop_oracle.api.filtering import (
     FilterOperator,
@@ -20,13 +20,16 @@ from tabletop_oracle.api.filtering import (
     apply_sort,
 )
 from tabletop_oracle.api.pagination import PaginationParams, paginate
-from tabletop_oracle.models.base import MappedBase
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
 
-class TestItem(MappedBase):
+class _TestBase(DeclarativeBase):
+    """Standalone declarative base for integration test models."""
+
+
+class TestItem(_TestBase):
     """Temporary test table for integration tests."""
 
     __tablename__ = "test_pagination_items"
@@ -41,7 +44,7 @@ class TestItem(MappedBase):
 async def _create_test_table(db_session: AsyncSession) -> None:
     """Create the test table and seed data."""
     conn = await db_session.connection()
-    await conn.run_sync(MappedBase.metadata.create_all, tables=[TestItem.__table__])
+    await conn.run_sync(_TestBase.metadata.create_all, tables=[TestItem.__table__])
 
     items = [
         TestItem(name="Alpha", score=10, active=True),
