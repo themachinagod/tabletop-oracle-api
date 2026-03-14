@@ -2,6 +2,10 @@
 
 from tabletop_oracle.auth.middleware import _extract_session_id, _is_public_path
 
+#: Valid 43-char URL-safe base64 tokens for testing format validation.
+_TOKEN_A = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnop0"
+_TOKEN_B = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefg"
+
 
 class TestIsPublicPath:
     """Public path matching for auth bypass."""
@@ -63,19 +67,19 @@ class TestExtractSessionId:
         return FakeRequest(cookies=cookies or {}, headers=headers or {})
 
     def test_cookie_extraction(self) -> None:
-        request = self._make_request(cookies={"sid": "cookie-session-id"})
-        assert _extract_session_id(request) == "cookie-session-id"  # type: ignore[arg-type]
+        request = self._make_request(cookies={"sid": _TOKEN_A})
+        assert _extract_session_id(request) == _TOKEN_A  # type: ignore[arg-type]
 
     def test_bearer_extraction(self) -> None:
-        request = self._make_request(headers={"authorization": "Bearer bearer-token"})
-        assert _extract_session_id(request) == "bearer-token"  # type: ignore[arg-type]
+        request = self._make_request(headers={"authorization": f"Bearer {_TOKEN_A}"})
+        assert _extract_session_id(request) == _TOKEN_A  # type: ignore[arg-type]
 
     def test_cookie_takes_precedence_over_bearer(self) -> None:
         request = self._make_request(
-            cookies={"sid": "from-cookie"},
-            headers={"authorization": "Bearer from-header"},
+            cookies={"sid": _TOKEN_A},
+            headers={"authorization": f"Bearer {_TOKEN_B}"},
         )
-        assert _extract_session_id(request) == "from-cookie"  # type: ignore[arg-type]
+        assert _extract_session_id(request) == _TOKEN_A  # type: ignore[arg-type]
 
     def test_no_session_returns_none(self) -> None:
         request = self._make_request()
@@ -90,8 +94,18 @@ class TestExtractSessionId:
         assert _extract_session_id(request) is None  # type: ignore[arg-type]
 
     def test_bearer_case_insensitive(self) -> None:
-        request = self._make_request(headers={"authorization": "BEARER my-token"})
-        assert _extract_session_id(request) == "my-token"  # type: ignore[arg-type]
+        request = self._make_request(headers={"authorization": f"BEARER {_TOKEN_A}"})
+        assert _extract_session_id(request) == _TOKEN_A  # type: ignore[arg-type]
+
+    def test_malformed_cookie_returns_none(self) -> None:
+        """Session IDs that don't match the 43-char base64 format are rejected."""
+        request = self._make_request(cookies={"sid": "too-short"})
+        assert _extract_session_id(request) is None  # type: ignore[arg-type]
+
+    def test_malformed_bearer_returns_none(self) -> None:
+        """Bearer tokens that don't match the expected format are rejected."""
+        request = self._make_request(headers={"authorization": "Bearer not-valid"})
+        assert _extract_session_id(request) is None  # type: ignore[arg-type]
 
 
 class FakeRequest:

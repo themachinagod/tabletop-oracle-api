@@ -23,6 +23,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 
 from tabletop_oracle.auth.constants import (
+    SESSION_COOKIE_HTTPONLY,
     SESSION_COOKIE_NAME,
     SESSION_COOKIE_PATH,
     SESSION_COOKIE_SAMESITE,
@@ -65,6 +66,9 @@ _AUTH_REQUIRED_CODE = "AUTHENTICATION_REQUIRED"
 #: SameSite cookie attribute typed for Starlette's delete_cookie signature.
 _SAMESITE = cast("Literal['lax', 'strict', 'none']", SESSION_COOKIE_SAMESITE)
 
+#: Session IDs are 43-char URL-safe base64 tokens (secrets.token_urlsafe(32)).
+_SESSION_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{43}$")
+
 
 def _is_public_path(path: str) -> bool:
     """Return True if the request path matches a public endpoint pattern.
@@ -76,25 +80,33 @@ def _is_public_path(path: str) -> bool:
 
 
 def _extract_session_id(request: Request) -> str | None:
-    """Extract the session ID from cookie or Authorization header.
+    """Extract and validate the session ID from cookie or Authorization header.
 
-    Cookie takes precedence over Bearer header per F002 design.
+    Cookie takes precedence over Bearer header per F002 design. The
+    extracted value is validated against the expected 43-char URL-safe
+    base64 format before being returned.
 
     Args:
         request: The incoming HTTP request.
 
     Returns:
-        The session ID string, or None if not found.
+        The session ID string, or None if not found or invalid format.
     """
     cookie_sid = request.cookies.get(SESSION_COOKIE_NAME)
     if cookie_sid:
-        return cookie_sid
+        if _SESSION_ID_PATTERN.match(cookie_sid):
+            return cookie_sid
+        logger.warning("session_id_invalid_format", source="cookie")
+        return None
 
     auth_header = request.headers.get("authorization", "")
     if auth_header.lower().startswith("bearer "):
         token = auth_header[7:].strip()
         if token:
-            return token
+            if _SESSION_ID_PATTERN.match(token):
+                return token
+            logger.warning("session_id_invalid_format", source="bearer")
+            return None
 
     return None
 
@@ -126,6 +138,8 @@ def _error_response(
             key=SESSION_COOKIE_NAME,
             path=SESSION_COOKIE_PATH,
             samesite=_SAMESITE,
+            httponly=SESSION_COOKIE_HTTPONLY,
+            secure=settings.session_cookie_secure,
         )
     return response
 
@@ -138,7 +152,9 @@ class SessionMiddleware(BaseHTTPMiddleware):
     and user from the database, and injects ``CurrentUser`` into
     ``request.state.current_user``.
 
-    Sliding expiry is maintained via ``SessionStore.touch()``.
+    Sliding expiry is maintained via ``SessionStore.touch()``, which
+    internally throttles writes to once per hour to avoid a DB write
+    on every request (see ``SessionStore.touch`` for details).
     """
 
     async def dispatch(
@@ -198,6 +214,7 @@ class SessionMiddleware(BaseHTTPMiddleware):
 
             structlog.contextvars.bind_contextvars(user_id=str(user.id))
 
+            # Sliding expiry — throttled inside SessionStore.touch()
             await SessionStore.touch(db, session_id)
             await db.commit()
 

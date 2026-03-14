@@ -2,6 +2,8 @@
 
 from uuid import UUID
 
+import pytest
+
 from tabletop_oracle.auth.models import CurrentUser
 
 
@@ -32,11 +34,8 @@ class TestCurrentUser:
             display_name="Curator",
             session_id="xyz789",
         )
-        try:
+        with pytest.raises(AttributeError):
             user.role = "player"  # type: ignore[misc]
-            raise AssertionError("Should have raised FrozenInstanceError")
-        except AttributeError:
-            pass
 
     def test_equality(self) -> None:
         """Two CurrentUser instances with same fields are equal."""

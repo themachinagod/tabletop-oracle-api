@@ -89,6 +89,10 @@ def _build_app(*, bypass_auth: bool = False) -> FastAPI:
     return app
 
 
+#: A valid 43-char URL-safe base64 token for tests (matches _SESSION_ID_PATTERN).
+_VALID_TOKEN = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnop0"
+
+
 def _mock_auth_context(
     user_id: uuid.UUID,
     role: UserRole = UserRole.PLAYER,
@@ -96,7 +100,7 @@ def _mock_auth_context(
     expired: bool = False,
 ):
     """Context manager that patches async_session_factory, SessionStore.get/touch."""
-    mock_session = _make_mock_session(session_id="tok", user_id=user_id, expired=expired)
+    mock_session = _make_mock_session(session_id=_VALID_TOKEN, user_id=user_id, expired=expired)
     mock_user = _make_mock_user(user_id=user_id, role=role, status=status)
 
     mock_db = AsyncMock()
@@ -109,34 +113,32 @@ def _mock_auth_context(
 
     class _Ctx:
         def __init__(self):
-            self.patches = [
-                patch(
-                    "tabletop_oracle.auth.middleware.async_session_factory",
-                    return_value=mock_factory,
-                ),
-                patch(
-                    "tabletop_oracle.auth.middleware.SessionStore.get",
-                    new_callable=AsyncMock,
-                    return_value=mock_session,
-                ),
-                patch(
-                    "tabletop_oracle.auth.middleware.SessionStore.touch",
-                    new_callable=AsyncMock,
-                ),
-            ]
+            self._factory_patch = patch(
+                "tabletop_oracle.auth.middleware.async_session_factory",
+                return_value=mock_factory,
+            )
+            self._get_patch = patch(
+                "tabletop_oracle.auth.middleware.SessionStore.get",
+                new_callable=AsyncMock,
+                return_value=mock_session,
+            )
+            self._touch_patch = patch(
+                "tabletop_oracle.auth.middleware.SessionStore.touch",
+                new_callable=AsyncMock,
+            )
             self.mock_db = mock_db
-            self.mock_touch = None
+            self.mock_touch: AsyncMock | None = None
 
         def __enter__(self):
-            for p in self.patches:
-                result = p.__enter__()
-                if hasattr(result, "assert_called_once_with"):
-                    self.mock_touch = result
+            self._factory_patch.__enter__()
+            self._get_patch.__enter__()
+            self.mock_touch = self._touch_patch.__enter__()
             return self
 
         def __exit__(self, *args):
-            for p in reversed(self.patches):
-                p.__exit__(*args)
+            self._touch_patch.__exit__(*args)
+            self._get_patch.__exit__(*args)
+            self._factory_patch.__exit__(*args)
 
     return _Ctx()
 
@@ -146,6 +148,7 @@ def _disable_bypass_auth():
     """Ensure bypass_auth is disabled for all tests unless explicitly overridden."""
     with patch("tabletop_oracle.auth.middleware.settings") as mock_settings:
         mock_settings.bypass_auth = False
+        mock_settings.session_cookie_secure = False
         yield mock_settings
 
 
@@ -224,7 +227,7 @@ class TestInvalidSession:
             async with AsyncClient(transport=transport, base_url="http://test") as client:
                 resp = await client.get(
                     "/api/v1/protected",
-                    cookies={"sid": "nonexistent-token"},
+                    cookies={"sid": _VALID_TOKEN},
                 )
         assert resp.status_code == 401
 
@@ -236,7 +239,7 @@ class TestExpiredSession:
     async def test_expired_session_returns_401_and_clears_cookie(self, test_app: FastAPI) -> None:
         user_id = uuid.uuid4()
         expired_session = _make_mock_session(
-            session_id="expired-token", user_id=user_id, expired=True
+            session_id=_VALID_TOKEN, user_id=user_id, expired=True
         )
 
         mock_db = AsyncMock()
@@ -261,7 +264,7 @@ class TestExpiredSession:
             async with AsyncClient(transport=transport, base_url="http://test") as client:
                 resp = await client.get(
                     "/api/v1/protected",
-                    cookies={"sid": "expired-token"},
+                    cookies={"sid": _VALID_TOKEN},
                 )
         assert resp.status_code == 401
         set_cookie = resp.headers.get("set-cookie", "")
@@ -274,7 +277,7 @@ class TestValidSession:
     @pytest.mark.asyncio
     async def test_valid_session_via_cookie(self, test_app: FastAPI) -> None:
         user_id = uuid.uuid4()
-        mock_session = _make_mock_session(session_id="valid-token", user_id=user_id)
+        mock_session = _make_mock_session(session_id=_VALID_TOKEN, user_id=user_id)
         mock_user = _make_mock_user(user_id=user_id, role=UserRole.PLAYER)
 
         mock_db = AsyncMock()
@@ -304,19 +307,19 @@ class TestValidSession:
             async with AsyncClient(transport=transport, base_url="http://test") as client:
                 resp = await client.get(
                     "/api/v1/protected",
-                    cookies={"sid": "valid-token"},
+                    cookies={"sid": _VALID_TOKEN},
                 )
 
         assert resp.status_code == 200
         body = resp.json()
         assert body["user_id"] == str(user_id)
         assert body["role"] == "player"
-        mock_touch.assert_called_once_with(mock_db, "valid-token")
+        mock_touch.assert_called_once_with(mock_db, _VALID_TOKEN)
 
     @pytest.mark.asyncio
     async def test_valid_session_via_bearer(self, test_app: FastAPI) -> None:
         user_id = uuid.uuid4()
-        mock_session = _make_mock_session(session_id="bearer-token", user_id=user_id)
+        mock_session = _make_mock_session(session_id=_VALID_TOKEN, user_id=user_id)
         mock_user = _make_mock_user(user_id=user_id, role=UserRole.CURATOR)
 
         mock_db = AsyncMock()
@@ -346,12 +349,23 @@ class TestValidSession:
             async with AsyncClient(transport=transport, base_url="http://test") as client:
                 resp = await client.get(
                     "/api/v1/protected",
-                    headers={"Authorization": "Bearer bearer-token"},
+                    headers={"Authorization": f"Bearer {_VALID_TOKEN}"},
                 )
 
         assert resp.status_code == 200
         body = resp.json()
         assert body["role"] == "curator"
+
+    @pytest.mark.asyncio
+    async def test_malformed_session_id_returns_401(self, test_app: FastAPI) -> None:
+        """Session IDs that don't match the expected format are rejected."""
+        transport = ASGITransport(app=test_app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.get(
+                "/api/v1/protected",
+                cookies={"sid": "too-short"},
+            )
+        assert resp.status_code == 401
 
 
 class TestDisabledUser:
@@ -365,7 +379,7 @@ class TestDisabledUser:
             async with AsyncClient(transport=transport, base_url="http://test") as client:
                 resp = await client.get(
                     "/api/v1/protected",
-                    cookies={"sid": "tok"},
+                    cookies={"sid": _VALID_TOKEN},
                 )
         assert resp.status_code == 401
 
@@ -397,7 +411,7 @@ class TestRoleEnforcementIntegration:
             async with AsyncClient(transport=transport, base_url="http://test") as client:
                 resp = await client.get(
                     "/api/v1/curator-only",
-                    cookies={"sid": "tok"},
+                    cookies={"sid": _VALID_TOKEN},
                 )
         assert resp.status_code == 200
 
@@ -409,7 +423,7 @@ class TestRoleEnforcementIntegration:
             async with AsyncClient(transport=transport, base_url="http://test") as client:
                 resp = await client.get(
                     "/api/v1/curator-only",
-                    cookies={"sid": "tok"},
+                    cookies={"sid": _VALID_TOKEN},
                 )
         assert resp.status_code == 403
 
@@ -421,7 +435,7 @@ class TestRoleEnforcementIntegration:
             async with AsyncClient(transport=transport, base_url="http://test") as client:
                 resp = await client.get(
                     "/api/v1/player-ok",
-                    cookies={"sid": "tok"},
+                    cookies={"sid": _VALID_TOKEN},
                 )
         assert resp.status_code == 200
 
@@ -437,7 +451,7 @@ class TestStructlogBinding:
         def capture_bind(**kwargs: Any) -> None:
             bound_vars.update(kwargs)
 
-        mock_session = _make_mock_session(session_id="tok", user_id=user_id)
+        mock_session = _make_mock_session(session_id=_VALID_TOKEN, user_id=user_id)
         mock_user = _make_mock_user(user_id=user_id)
 
         mock_db = AsyncMock()
@@ -471,7 +485,7 @@ class TestStructlogBinding:
             async with AsyncClient(transport=transport, base_url="http://test") as client:
                 await client.get(
                     "/api/v1/protected",
-                    cookies={"sid": "tok"},
+                    cookies={"sid": _VALID_TOKEN},
                 )
 
         assert bound_vars.get("user_id") == str(user_id)

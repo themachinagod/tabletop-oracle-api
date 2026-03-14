@@ -20,12 +20,15 @@ Usage in route definitions::
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated
 
 from fastapi import Depends, Request
 
 from tabletop_oracle.auth.models import CurrentUser
 from tabletop_oracle.errors.exceptions import AuthenticationError, ForbiddenError
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 #: Role hierarchy — higher index means more privilege.
 _ROLE_HIERARCHY: dict[str, int] = {
@@ -52,7 +55,7 @@ def get_current_user(request: Request) -> CurrentUser:
     return current_user
 
 
-def require_role(role: str) -> object:
+def require_role(role: str) -> Callable[..., CurrentUser]:
     """Create a FastAPI dependency that enforces a minimum role level.
 
     Curator satisfies all role checks. Player role check is satisfied
