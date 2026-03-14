@@ -38,7 +38,7 @@ async def _create_test_user(db: AsyncSession) -> uuid.UUID:
         {
             "id": str(user_id),
             "provider": "google",
-            "sub": "test-subject-id",
+            "sub": f"test-{uuid.uuid4().hex}",
             "email": email,
             "name": "Test User",
         },
