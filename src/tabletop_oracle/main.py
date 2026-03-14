@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from tabletop_oracle.api.health import router as health_router
 from tabletop_oracle.config import settings
+from tabletop_oracle.errors.handlers import register_exception_handlers
 from tabletop_oracle.middleware.correlation import CorrelationMiddleware
 from tabletop_oracle.middleware.logging import LoggingMiddleware
 
@@ -14,6 +15,9 @@ app = FastAPI(
     docs_url="/api/v1/docs",
     openapi_url="/api/v1/openapi.json",
 )
+
+# Exception handlers
+register_exception_handlers(app)
 
 # Middleware (order matters — outermost first)
 app.add_middleware(LoggingMiddleware)

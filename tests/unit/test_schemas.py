@@ -4,6 +4,8 @@ from tabletop_oracle.schemas.common import (
     DataEnvelope,
     ErrorDetail,
     ErrorEnvelope,
+    ErrorMeta,
+    FieldErrorDetail,
     ListEnvelope,
     PaginationMeta,
 )
@@ -30,16 +32,42 @@ def test_list_envelope() -> None:
     assert envelope.meta.total_items == 2
 
 
-def test_error_detail() -> None:
-    """ErrorDetail stores code, message, and optional field."""
-    detail = ErrorDetail(code="NOT_FOUND", message="not found")
-    assert detail.field is None
+def test_field_error_detail() -> None:
+    """FieldErrorDetail stores field, message, and code."""
+    detail = FieldErrorDetail(field="email", message="invalid")
+    assert detail.code == "invalid"
 
-    detail_with_field = ErrorDetail(code="VALIDATION", message="bad", field="name")
-    assert detail_with_field.field == "name"
+    detail_custom = FieldErrorDetail(field="age", message="too low", code="min_value")
+    assert detail_custom.code == "min_value"
+
+
+def test_error_detail_without_details() -> None:
+    """ErrorDetail defaults to empty details list."""
+    detail = ErrorDetail(code="NOT_FOUND", message="not found")
+    assert detail.details == []
+
+
+def test_error_detail_with_details() -> None:
+    """ErrorDetail carries per-field validation details."""
+    field_errors = [
+        FieldErrorDetail(field="name", message="required", code="required"),
+    ]
+    detail = ErrorDetail(code="VALIDATION_ERROR", message="bad input", details=field_errors)
+    assert len(detail.details) == 1
+    assert detail.details[0].field == "name"
+
+
+def test_error_meta() -> None:
+    """ErrorMeta stores request_id."""
+    meta = ErrorMeta(request_id="abc-123")
+    assert meta.request_id == "abc-123"
 
 
 def test_error_envelope() -> None:
-    """ErrorEnvelope wraps an ErrorDetail."""
-    envelope = ErrorEnvelope(error=ErrorDetail(code="ERR", message="fail"))
+    """ErrorEnvelope wraps ErrorDetail and ErrorMeta."""
+    envelope = ErrorEnvelope(
+        error=ErrorDetail(code="ERR", message="fail"),
+        meta=ErrorMeta(request_id="req-1"),
+    )
     assert envelope.error.code == "ERR"
+    assert envelope.meta.request_id == "req-1"
