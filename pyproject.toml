@@ -43,6 +43,9 @@ select = ["E", "F", "I", "N", "UP", "B", "A", "SIM", "TCH", "RUF"]
 # UP046: Pydantic BaseModel generics require Generic[T] — PEP 695 not yet supported
 ignore = ["UP046"]
 
+[tool.ruff.lint.isort]
+known-first-party = ["tabletop_oracle"]
+
 [tool.ruff.format]
 quote-style = "double"
 
