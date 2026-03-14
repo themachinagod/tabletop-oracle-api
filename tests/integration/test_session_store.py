@@ -11,12 +11,10 @@ from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 import pytest
-from sqlalchemy import update
+from sqlalchemy import text, update
 
 from tabletop_oracle.auth.session_store import SessionStore
 from tabletop_oracle.models.auth_session import AuthSession
-from tabletop_oracle.models.enums import OAuthProvider
-from tabletop_oracle.models.user import User
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,16 +23,27 @@ pytestmark = pytest.mark.integration
 
 
 async def _create_test_user(db: AsyncSession) -> uuid.UUID:
-    """Insert a minimal user and return the user ID."""
-    user = User(
-        oauth_provider=OAuthProvider.GOOGLE,
-        oauth_subject_id="test-subject-id",
-        email=f"test-{uuid.uuid4().hex[:8]}@example.com",
-        display_name="Test User",
+    """Insert a minimal user via raw SQL and return the user ID.
+
+    Uses raw SQL to avoid coupling to the User ORM model's enum
+    mapping behaviour, which differs between SQLAlchemy versions.
+    """
+    user_id = uuid.uuid4()
+    email = f"test-{uuid.uuid4().hex[:8]}@example.com"
+    await db.execute(
+        text(
+            "INSERT INTO users (id, oauth_provider, oauth_subject_id, email, display_name) "
+            "VALUES (:id, :provider, :sub, :email, :name)"
+        ),
+        {
+            "id": str(user_id),
+            "provider": "google",
+            "sub": "test-subject-id",
+            "email": email,
+            "name": "Test User",
+        },
     )
-    db.add(user)
-    await db.flush()
-    return user.id
+    return user_id
 
 
 class TestSessionStoreCreate:
