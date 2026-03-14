@@ -6,6 +6,7 @@ and async session infrastructure work against a real PostgreSQL instance.
 
 from __future__ import annotations
 
+import logging
 import uuid
 from typing import TYPE_CHECKING
 
@@ -14,7 +15,6 @@ from sqlalchemy import TIMESTAMP, text
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
-    from testcontainers.postgres import PostgresContainer
 
 pytestmark = pytest.mark.integration
 
@@ -50,19 +50,13 @@ async def test_alembic_version_table_exists(db_session: AsyncSession) -> None:
     assert result.scalar() is True
 
 
-@pytest.mark.asyncio
-async def test_alembic_downgrade_and_upgrade(
-    postgres_container: PostgresContainer,
-) -> None:
+def test_alembic_downgrade_and_upgrade(sync_db_url: str) -> None:
     """Alembic downgrade to base and upgrade to head both succeed."""
-    import logging
-
     from alembic import command
     from alembic.config import Config
 
-    sync_url = postgres_container.get_connection_url()
     alembic_cfg = Config()
-    alembic_cfg.set_main_option("sqlalchemy.url", sync_url)
+    alembic_cfg.set_main_option("sqlalchemy.url", sync_db_url)
     alembic_cfg.set_main_option("script_location", "migrations")
     alembic_cfg.attributes["configure_logger"] = False
     logging.getLogger("alembic").setLevel(logging.WARNING)
@@ -76,8 +70,8 @@ def test_base_model_id_has_server_default() -> None:
     from tabletop_oracle.models.base import Base
 
     id_col = Base.__dict__["id"]
-    assert id_col.server_default is not None
-    assert "gen_random_uuid" in str(id_col.server_default.arg)
+    assert id_col.column.server_default is not None
+    assert "gen_random_uuid" in str(id_col.column.server_default.arg)
 
 
 def test_base_model_timestamps_use_timestamptz() -> None:
@@ -96,7 +90,7 @@ def test_base_model_id_has_no_python_default() -> None:
     from tabletop_oracle.models.base import Base
 
     id_col = Base.__dict__["id"]
-    assert id_col.default is None
+    assert id_col.column.default is None
 
 
 def test_base_model_updated_at_has_no_onupdate() -> None:
@@ -104,4 +98,4 @@ def test_base_model_updated_at_has_no_onupdate() -> None:
     from tabletop_oracle.models.base import Base
 
     col = Base.__dict__["updated_at"]
-    assert col.onupdate is None
+    assert col.column.onupdate is None
