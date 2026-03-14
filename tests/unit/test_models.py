@@ -11,9 +11,11 @@ import enum
 from typing import Any
 
 import pytest
+import sqlalchemy as sa
 from sqlalchemy import inspect as sa_inspect
 
 from tabletop_oracle.models import (
+    AuthSession,
     Base,
     Citation,
     ContextAttachment,
@@ -58,6 +60,7 @@ class TestModelImports:
     def test_all_models_importable(self) -> None:
         """Every model class can be imported from the models package."""
         model_classes = [
+            AuthSession,
             User,
             Game,
             GameTag,
@@ -82,8 +85,9 @@ class TestModelImports:
         assert Base.metadata is MappedBase.metadata
 
     def test_all_tables_registered_in_metadata(self) -> None:
-        """All 15 tables are registered in the shared metadata."""
+        """All 16 tables are registered in the shared metadata."""
         expected_tables = {
+            "auth_sessions",
             "users",
             "games",
             "game_tags",
@@ -115,6 +119,7 @@ class TestTableNames:
     @pytest.mark.parametrize(
         ("model", "expected_table"),
         [
+            (AuthSession, "auth_sessions"),
             (User, "users"),
             (Game, "games"),
             (GameTag, "game_tags"),
@@ -252,9 +257,14 @@ class TestRelationships:
         return {r.key for r in mapper.relationships}
 
     def test_user_relationships(self) -> None:
-        """User has games, sessions, and document_versions relationships."""
+        """User has games, sessions, auth_sessions, and document_versions relationships."""
         rels = self._get_relationship_names(User)
-        assert {"games", "sessions", "document_versions"} <= rels
+        assert {"games", "sessions", "auth_sessions", "document_versions"} <= rels
+
+    def test_auth_session_relationships(self) -> None:
+        """AuthSession has user relationship."""
+        rels = self._get_relationship_names(AuthSession)
+        assert "user" in rels
 
     def test_game_relationships(self) -> None:
         """Game has creator, expansions, documents, tags, sessions."""
@@ -353,6 +363,10 @@ class TestForeignKeys:
         """ContextAttachment.message_id has ON DELETE CASCADE."""
         assert self._get_fk_ondelete(ContextAttachment, "message_id") == "CASCADE"
 
+    def test_auth_session_user_id_cascade(self) -> None:
+        """AuthSession.user_id has ON DELETE CASCADE."""
+        assert self._get_fk_ondelete(AuthSession, "user_id") == "CASCADE"
+
     def test_document_game_id_no_cascade(self) -> None:
         """Document.game_id has no ON DELETE CASCADE (restrict)."""
         assert self._get_fk_ondelete(Document, "game_id") is None
@@ -407,6 +421,22 @@ class TestNullability:
         """Message.confidence_score is nullable."""
         assert self._is_nullable(Message, "confidence_score")
 
+    def test_auth_session_user_agent_nullable(self) -> None:
+        """AuthSession.user_agent is nullable."""
+        assert self._is_nullable(AuthSession, "user_agent")
+
+    def test_auth_session_ip_address_nullable(self) -> None:
+        """AuthSession.ip_address is nullable."""
+        assert self._is_nullable(AuthSession, "ip_address")
+
+    def test_auth_session_expires_at_not_nullable(self) -> None:
+        """AuthSession.expires_at is NOT nullable."""
+        assert not self._is_nullable(AuthSession, "expires_at")
+
+    def test_auth_session_user_id_not_nullable(self) -> None:
+        """AuthSession.user_id is NOT nullable."""
+        assert not self._is_nullable(AuthSession, "user_id")
+
     def test_user_email_not_nullable(self) -> None:
         """User.email is NOT nullable."""
         assert not self._is_nullable(User, "email")
@@ -435,6 +465,7 @@ class TestBaseInheritance:
     @pytest.mark.parametrize(
         "model",
         [
+            AuthSession,
             User,
             Document,
             DocumentVersion,
@@ -468,6 +499,22 @@ class TestBaseInheritance:
 # ---------------------------------------------------------------------------
 # Server defaults
 # ---------------------------------------------------------------------------
+
+
+class TestAuthSessionPrimaryKey:
+    """AuthSession uses a TEXT primary key, not UUID."""
+
+    def test_auth_session_id_is_text_type(self) -> None:
+        """AuthSession.id column is TEXT (not UUID)."""
+        table = AuthSession.__table__  # type: ignore[attr-defined]
+        col = table.c.id
+        assert isinstance(col.type, sa.Text)
+
+    def test_auth_session_id_is_primary_key(self) -> None:
+        """AuthSession.id is the primary key."""
+        table = AuthSession.__table__  # type: ignore[attr-defined]
+        pk_cols = [c.name for c in table.primary_key.columns]
+        assert pk_cols == ["id"]
 
 
 class TestServerDefaults:

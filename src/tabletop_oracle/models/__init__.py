@@ -5,6 +5,7 @@ SQLAlchemy metadata registration for all models, which is required for
 Alembic auto-detection of schema changes.
 """
 
+from tabletop_oracle.models.auth_session import AuthSession
 from tabletop_oracle.models.base import Base, MappedBase
 from tabletop_oracle.models.document import Document, DocumentVersion
 from tabletop_oracle.models.enums import (
@@ -31,6 +32,7 @@ from tabletop_oracle.models.session import Session, SessionExpansion
 from tabletop_oracle.models.user import User
 
 __all__ = [
+    "AuthSession",
     "Base",
     "Citation",
     "ContextAttachment",
