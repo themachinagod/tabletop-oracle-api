@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Annotated
 from uuid import UUID  # noqa: TC003  # FastAPI needs UUID at runtime for path validation
 
@@ -59,13 +60,13 @@ async def _session_expiry_wrapper(
         auth_session_id: The session token ID to validate.
         check_interval: How often to check session validity (seconds).
     """
-    last_check = asyncio.get_event_loop().time()
+    last_check = asyncio.get_running_loop().time()
 
     try:
         async for event in event_generator:
             yield event
 
-            now = asyncio.get_event_loop().time()
+            now = asyncio.get_running_loop().time()
             if now - last_check >= check_interval:
                 last_check = now
                 if not await _is_session_valid(auth_session_id):
@@ -87,8 +88,6 @@ async def _is_session_valid(session_id: str) -> bool:
     Args:
         session_id: The auth session token ID.
     """
-    from datetime import UTC, datetime
-
     async with async_session_factory() as db:
         auth_session = await SessionStore.get(db, session_id)
         if auth_session is None:
@@ -166,17 +165,13 @@ async def stream_message(
         StreamingResponse with text/event-stream, or 204 No Content,
         or raises appropriate error (401, 404).
     """
-    # 1. Validate session ownership.
-    #    In a full implementation, this would load the game session from DB
-    #    and verify ownership. For now, we validate with check_ownership
-    #    pattern — the session lookup will be provided by EPIC-004.
-    #
-    #    Stub: treat session as not found if no stream is active.
-    #    When EPIC-004 is implemented, this will be:
-    #      session = await session_service.get(session_id)
-    #      if not session:
-    #          raise NotFoundError("Session", str(session_id))
-    #      check_ownership(session.user_id, current_user, "Session", str(session_id))
+    # SECURITY: Session ownership is NOT enforced until EPIC-004 provides the
+    # session service. Any authenticated user can currently request any stream.
+    # EPIC-004 MUST close this gap by implementing:
+    #   session = await session_service.get(session_id)
+    #   if not session:
+    #       raise NotFoundError("Session", str(session_id))
+    #   check_ownership(session.user_id, current_user, "Session", str(session_id))
 
     # 2. Check if message is actively streaming.
     stream_key = (session_id, message_id)

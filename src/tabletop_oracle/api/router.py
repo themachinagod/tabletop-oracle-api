@@ -18,7 +18,7 @@ api_router.include_router(health_router)
 # Auth — OAuth login/callback unauthenticated, logout/me require session
 api_router.include_router(auth_router, prefix="/auth")
 
-# SSE streaming — authenticated, resource-level authorisation
+# SSE streaming — no prefix; paths are resource-scoped (/sessions/..., /documents/...)
 api_router.include_router(sse_router)
 
 # api_router.include_router(games_router, prefix="/games")     # authenticated
