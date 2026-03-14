@@ -30,6 +30,7 @@ def _capture_log_output(log_level: str = "DEBUG") -> tuple[StringIO, structlog.s
     formatter = structlog.stdlib.ProcessorFormatter(
         processors=[
             structlog.stdlib.ProcessorFormatter.remove_processors_meta,
+            structlog.processors.EventRenamer("message"),
             structlog.processors.JSONRenderer(),
         ],
     )
@@ -66,7 +67,7 @@ class TestLogOutputFormat:
         parsed = json.loads(buf.getvalue().strip())
         assert "timestamp" in parsed
         assert parsed["level"] == "info"
-        assert parsed["event"] == "hello world"
+        assert parsed["message"] == "hello world"
         assert parsed["logger"] == "test_logger"
 
     def test_timestamp_is_iso8601_utc(self) -> None:
@@ -100,7 +101,7 @@ class TestLogOutputFormat:
         lines = [ln for ln in output.splitlines() if ln.strip()]
         assert len(lines) == 1
         parsed = json.loads(lines[0])
-        assert parsed["event"] == "should appear"
+        assert parsed["message"] == "should appear"
 
 
 class TestSensitiveDataFiltering:

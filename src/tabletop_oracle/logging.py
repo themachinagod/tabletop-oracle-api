@@ -89,6 +89,7 @@ def configure_logging(log_level: str = "INFO") -> None:
     formatter = structlog.stdlib.ProcessorFormatter(
         processors=[
             structlog.stdlib.ProcessorFormatter.remove_processors_meta,
+            structlog.processors.EventRenamer("message"),
             structlog.processors.JSONRenderer(),
         ],
     )

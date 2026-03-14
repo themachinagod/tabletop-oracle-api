@@ -84,6 +84,7 @@ def _setup_capture(log_level: str = "DEBUG") -> StringIO:
     formatter = structlog.stdlib.ProcessorFormatter(
         processors=[
             structlog.stdlib.ProcessorFormatter.remove_processors_meta,
+            structlog.processors.EventRenamer("message"),
             structlog.processors.JSONRenderer(),
         ],
     )
@@ -96,7 +97,7 @@ def _setup_capture(log_level: str = "DEBUG") -> StringIO:
 
 
 def _parse_request_lines(output: str) -> list[dict[str, object]]:
-    """Extract JSON log lines that are request or slow_request events."""
+    """Extract JSON log lines that are request or slow_request messages."""
     results: list[dict[str, object]] = []
     for ln in output.strip().splitlines():
         ln = ln.strip()
@@ -106,7 +107,7 @@ def _parse_request_lines(output: str) -> list[dict[str, object]]:
             parsed = json.loads(ln)
         except json.JSONDecodeError:
             continue
-        event = parsed.get("event", "")
+        event = parsed.get("message", "")
         if event in ("request", "slow_request"):
             results.append(parsed)
     return results
@@ -208,7 +209,7 @@ class TestLoggingMiddleware:
                 )
 
         entries = _parse_request_lines(buf.getvalue())
-        slow = [e for e in entries if e["event"] == "slow_request"]
+        slow = [e for e in entries if e["message"] == "slow_request"]
         assert len(slow) >= 1, f"Expected slow_request log. Output: {buf.getvalue()}"
         assert slow[0]["level"] == "warning"
 
@@ -244,7 +245,7 @@ class TestLoggingIntegration:
 
         entries = _parse_json_lines(buf.getvalue())
         # At minimum, the request log should be present.
-        request_entries = [e for e in entries if e.get("event") in ("request", "slow_request")]
+        request_entries = [e for e in entries if e.get("message") in ("request", "slow_request")]
         assert len(request_entries) >= 1
 
         # All structlog-formatted lines have timestamp and level.
@@ -293,7 +294,7 @@ class TestLoggingMiddlewareEdgeCases:
             await client.get("/error")
 
         all_lines = _parse_json_lines(buf.getvalue())
-        error_lines = [e for e in all_lines if e.get("event") == "request_error"]
+        error_lines = [e for e in all_lines if e.get("message") == "request_error"]
         assert len(error_lines) >= 1, f"No error log. Output: {buf.getvalue()}"
         entry = error_lines[0]
         assert entry["level"] == "error"
