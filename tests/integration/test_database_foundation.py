@@ -10,7 +10,7 @@ import uuid
 from typing import TYPE_CHECKING
 
 import pytest
-from sqlalchemy import TIMESTAMP, Column, text
+from sqlalchemy import TIMESTAMP, text
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -32,7 +32,6 @@ async def test_gen_random_uuid_available(db_session: AsyncSession) -> None:
     result = await db_session.execute(text("SELECT gen_random_uuid()"))
     value = result.scalar()
     assert value is not None
-    # Verify it parses as a valid UUID
     parsed = uuid.UUID(str(value))
     assert parsed.version == 4
 
@@ -56,18 +55,19 @@ async def test_alembic_downgrade_and_upgrade(
     postgres_container: PostgresContainer,
 ) -> None:
     """Alembic downgrade to base and upgrade to head both succeed."""
+    import logging
+
     from alembic import command
     from alembic.config import Config
 
     sync_url = postgres_container.get_connection_url()
-    alembic_cfg = Config("alembic.ini")
+    alembic_cfg = Config()
     alembic_cfg.set_main_option("sqlalchemy.url", sync_url)
     alembic_cfg.set_main_option("script_location", "migrations")
+    alembic_cfg.attributes["configure_logger"] = False
+    logging.getLogger("alembic").setLevel(logging.WARNING)
 
-    # Downgrade to base (empty schema)
     command.downgrade(alembic_cfg, "base")
-
-    # Upgrade back to head
     command.upgrade(alembic_cfg, "head")
 
 
@@ -75,7 +75,7 @@ def test_base_model_id_has_server_default() -> None:
     """Base.id column uses gen_random_uuid() as server_default."""
     from tabletop_oracle.models.base import Base
 
-    id_col: Column[uuid.UUID] = Base.__dict__["id"].property.columns[0]  # type: ignore[assignment]
+    id_col = Base.__dict__["id"]
     assert id_col.server_default is not None
     assert "gen_random_uuid" in str(id_col.server_default.arg)
 
@@ -85,16 +85,17 @@ def test_base_model_timestamps_use_timestamptz() -> None:
     from tabletop_oracle.models.base import Base
 
     for col_name in ("created_at", "updated_at"):
-        col: Column[object] = Base.__dict__[col_name].property.columns[0]  # type: ignore[assignment]
-        assert isinstance(col.type, TIMESTAMP)
-        assert col.type.timezone is True
+        col = Base.__dict__[col_name]
+        col_type = col.column.type
+        assert isinstance(col_type, TIMESTAMP)
+        assert col_type.timezone is True
 
 
 def test_base_model_id_has_no_python_default() -> None:
     """Base.id does not set a Python-side default (server generates UUID)."""
     from tabletop_oracle.models.base import Base
 
-    id_col: Column[uuid.UUID] = Base.__dict__["id"].property.columns[0]  # type: ignore[assignment]
+    id_col = Base.__dict__["id"]
     assert id_col.default is None
 
 
@@ -102,5 +103,5 @@ def test_base_model_updated_at_has_no_onupdate() -> None:
     """Base.updated_at does not use SQLAlchemy onupdate (trigger-managed)."""
     from tabletop_oracle.models.base import Base
 
-    col: Column[object] = Base.__dict__["updated_at"].property.columns[0]  # type: ignore[assignment]
+    col = Base.__dict__["updated_at"]
     assert col.onupdate is None

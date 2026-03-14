@@ -50,13 +50,17 @@ def _run_migrations(postgres_container: PostgresContainer) -> None:
 
     Uses the sync (psycopg2) URL since Alembic's offline/online runner
     invokes asyncio.run() internally, which conflicts with the event
-    loop. Instead we configure Alembic with the sync URL for migration
-    execution.
+    loop. Creates Config programmatically (not from alembic.ini) to
+    avoid logging configuration issues in test environments.
     """
+    import logging
+
     sync_url = postgres_container.get_connection_url()
-    alembic_cfg = Config("alembic.ini")
+    alembic_cfg = Config()
     alembic_cfg.set_main_option("sqlalchemy.url", sync_url)
     alembic_cfg.set_main_option("script_location", "migrations")
+    alembic_cfg.attributes["configure_logger"] = False
+    logging.getLogger("alembic").setLevel(logging.WARNING)
     command.upgrade(alembic_cfg, "head")
 
 

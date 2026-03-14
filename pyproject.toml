@@ -58,5 +58,17 @@ markers = [
     "integration: tests requiring external services (PostgreSQL via testcontainers)",
 ]
 
+[tool.coverage.run]
+source = ["src/tabletop_oracle"]
+omit = ["src/tabletop_oracle/__init__.py"]
+
+[tool.coverage.report]
+exclude_also = [
+    "if TYPE_CHECKING:",
+    "@abstractmethod",
+    "pass",
+    "\\.\\.\\.",
+]
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/tabletop_oracle"]
