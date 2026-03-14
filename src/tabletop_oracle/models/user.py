@@ -74,15 +74,8 @@ class User(MappedBase):
     )
 
     # Relationships
-    games: Mapped[list[Game]] = relationship(
-        back_populates="creator",
-        lazy="selectin",
-    )
-    sessions: Mapped[list[Session]] = relationship(
-        back_populates="user",
-        lazy="selectin",
-    )
+    games: Mapped[list[Game]] = relationship(back_populates="creator")
+    sessions: Mapped[list[Session]] = relationship(back_populates="user")
     document_versions: Mapped[list[DocumentVersion]] = relationship(
         back_populates="uploader",
-        lazy="selectin",
     )
