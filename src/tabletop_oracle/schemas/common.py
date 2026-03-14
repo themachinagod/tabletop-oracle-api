@@ -29,15 +29,38 @@ class ListEnvelope(BaseModel, Generic[T]):
     meta: PaginationMeta
 
 
+class FieldErrorDetail(BaseModel):
+    """Per-field validation error detail."""
+
+    field: str
+    message: str
+    code: str = "invalid"
+
+
 class ErrorDetail(BaseModel):
-    """Structured error detail."""
+    """Structured error detail.
+
+    The details array is populated for validation errors with per-field
+    information. For non-validation errors, details is empty.
+    """
 
     code: str
     message: str
-    field: str | None = None
+    details: list[FieldErrorDetail] = Field(default_factory=list)
+
+
+class ErrorMeta(BaseModel):
+    """Error response metadata."""
+
+    request_id: str
 
 
 class ErrorEnvelope(BaseModel):
-    """Standard error response envelope."""
+    """Standard error response envelope.
+
+    All error responses follow this structure. The meta.request_id
+    is populated from the correlation middleware.
+    """
 
     error: ErrorDetail
+    meta: ErrorMeta
