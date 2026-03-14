@@ -8,6 +8,7 @@ from fastapi import APIRouter
 
 from tabletop_oracle.api.auth import router as auth_router
 from tabletop_oracle.api.health import router as health_router
+from tabletop_oracle.api.sse import router as sse_router
 
 api_router = APIRouter()
 
@@ -16,6 +17,10 @@ api_router.include_router(health_router)
 
 # Auth — OAuth login/callback unauthenticated, logout/me require session
 api_router.include_router(auth_router, prefix="/auth")
+
+# SSE streaming — no prefix; paths are resource-scoped (/sessions/..., /documents/...)
+api_router.include_router(sse_router)
+
 # api_router.include_router(games_router, prefix="/games")     # authenticated
 # api_router.include_router(sessions_router, prefix="/sessions")  # authenticated
 # api_router.include_router(admin_router, prefix="/admin")     # curator role
