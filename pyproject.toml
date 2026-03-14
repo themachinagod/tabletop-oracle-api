@@ -29,6 +29,8 @@ dev = [
     "ruff>=0.6.0",
     "pre-commit>=3.7.0",
     "factory-boy>=3.3.0",
+    "testcontainers[postgres]>=4.4.0",
+    "psycopg2-binary>=2.9.9",
 ]
 
 [tool.ruff]
@@ -52,6 +54,9 @@ plugins = ["pydantic.mypy"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+markers = [
+    "integration: tests requiring external services (PostgreSQL via testcontainers)",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/tabletop_oracle"]

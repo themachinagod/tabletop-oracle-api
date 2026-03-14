@@ -1,4 +1,9 @@
-"""Alembic environment configuration for async SQLAlchemy."""
+"""Alembic environment configuration for async SQLAlchemy.
+
+Reads the database URL from application settings (environment variables)
+rather than alembic.ini, ensuring a single source of truth for connection
+configuration.
+"""
 
 import asyncio
 from logging.config import fileConfig
@@ -7,12 +12,18 @@ from alembic import context
 from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
+from tabletop_oracle.config import settings
 from tabletop_oracle.models.base import Base
 
 config = context.config
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
+
+# Override alembic.ini URL with the application settings value.
+# This ensures alembic always uses the same URL as the running application,
+# driven by DATABASE_URL_ASYNC environment variable (or its default).
+config.set_main_option("sqlalchemy.url", settings.database_url_async)
 
 target_metadata = Base.metadata
 
