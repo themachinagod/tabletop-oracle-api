@@ -18,6 +18,7 @@ from tabletop_oracle.models.base import MappedBase
 from tabletop_oracle.models.enums import OAuthProvider, UserRole, UserStatus
 
 if TYPE_CHECKING:
+    from tabletop_oracle.models.auth_session import AuthSession
     from tabletop_oracle.models.document import DocumentVersion
     from tabletop_oracle.models.game import Game
     from tabletop_oracle.models.session import Session
@@ -76,6 +77,10 @@ class User(MappedBase):
     # Relationships
     games: Mapped[list[Game]] = relationship(back_populates="creator")
     sessions: Mapped[list[Session]] = relationship(back_populates="user")
+    auth_sessions: Mapped[list[AuthSession]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
     document_versions: Mapped[list[DocumentVersion]] = relationship(
         back_populates="uploader",
     )
