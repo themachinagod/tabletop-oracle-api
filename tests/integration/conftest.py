@@ -8,18 +8,20 @@ from __future__ import annotations
 
 import logging
 import os
-from collections.abc import AsyncGenerator, Generator
+from typing import TYPE_CHECKING
 
 import pytest
 from alembic import command
 from alembic.config import Config
 from sqlalchemy import event
 from sqlalchemy.ext.asyncio import (
-    AsyncEngine,
     AsyncSession,
     async_sessionmaker,
     create_async_engine,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncGenerator, Generator
 
 logger = logging.getLogger(__name__)
 
