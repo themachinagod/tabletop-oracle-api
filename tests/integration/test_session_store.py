@@ -27,7 +27,7 @@ pytestmark = pytest.mark.integration
 async def _create_test_user(db: AsyncSession) -> uuid.UUID:
     """Insert a minimal user and return the user ID."""
     user = User(
-        oauth_provider=OAuthProvider.google,
+        oauth_provider=OAuthProvider.GOOGLE,
         oauth_subject_id="test-subject-id",
         email=f"test-{uuid.uuid4().hex[:8]}@example.com",
         display_name="Test User",
