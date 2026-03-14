@@ -26,6 +26,7 @@ from collections.abc import Sequence
 
 import sqlalchemy as sa
 from alembic import op
+from sqlalchemy.dialects import postgresql
 
 revision: str = "b6c39a30deff"
 down_revision: str | None = None
@@ -127,7 +128,7 @@ def _create_tables() -> None:
         ),
         sa.Column(
             "oauth_provider",
-            sa.Enum("google", "microsoft", name="oauth_provider", create_type=False),
+            postgresql.ENUM(name="oauth_provider", create_type=False),
             nullable=False,
         ),
         sa.Column("oauth_subject_id", sa.Text(), nullable=True),
@@ -135,13 +136,13 @@ def _create_tables() -> None:
         sa.Column("display_name", sa.Text(), nullable=False),
         sa.Column(
             "role",
-            sa.Enum("player", "curator", name="user_role", create_type=False),
+            postgresql.ENUM(name="user_role", create_type=False),
             nullable=False,
             server_default="player",
         ),
         sa.Column(
             "status",
-            sa.Enum("active", "disabled", name="user_status", create_type=False),
+            postgresql.ENUM(name="user_status", create_type=False),
             nullable=False,
             server_default="active",
         ),
@@ -188,7 +189,7 @@ def _create_tables() -> None:
         sa.Column("cover_image_url", sa.Text(), nullable=True),
         sa.Column(
             "complexity",
-            sa.Enum("light", "medium", "heavy", name="game_complexity", create_type=False),
+            postgresql.ENUM(name="game_complexity", create_type=False),
             nullable=True,
         ),
         sa.Column("archived_at", sa.TIMESTAMP(timezone=True), nullable=True),
@@ -285,41 +286,17 @@ def _create_tables() -> None:
         sa.Column("name", sa.Text(), nullable=False),
         sa.Column(
             "type",
-            sa.Enum(
-                "core_rules",
-                "faq",
-                "errata",
-                "expansion_rules",
-                "strategy",
-                "other",
-                name="document_type",
-                create_type=False,
-            ),
+            postgresql.ENUM(name="document_type", create_type=False),
             nullable=False,
         ),
         sa.Column(
             "format",
-            sa.Enum(
-                "pdf",
-                "markdown",
-                "text",
-                "html",
-                "docx",
-                name="document_format",
-                create_type=False,
-            ),
+            postgresql.ENUM(name="document_format", create_type=False),
             nullable=False,
         ),
         sa.Column(
             "status",
-            sa.Enum(
-                "uploaded",
-                "parsing",
-                "processed",
-                "error",
-                name="document_status",
-                create_type=False,
-            ),
+            postgresql.ENUM(name="document_status", create_type=False),
             nullable=False,
             server_default="uploaded",
         ),
@@ -407,7 +384,7 @@ def _create_tables() -> None:
         sa.Column("player_count", sa.Integer(), nullable=True),
         sa.Column(
             "status",
-            sa.Enum("active", "archived", name="session_status", create_type=False),
+            postgresql.ENUM(name="session_status", create_type=False),
             nullable=False,
             server_default="active",
         ),
@@ -466,14 +443,7 @@ def _create_tables() -> None:
         sa.Column("session_id", sa.UUID(), sa.ForeignKey("sessions.id"), nullable=False),
         sa.Column(
             "type",
-            sa.Enum(
-                "user_question",
-                "ai_answer",
-                "ai_clarification",
-                "system",
-                name="message_type",
-                create_type=False,
-            ),
+            postgresql.ENUM(name="message_type", create_type=False),
             nullable=False,
         ),
         sa.Column("content", sa.Text(), nullable=False),
@@ -524,16 +494,7 @@ def _create_tables() -> None:
         sa.Column("document_name", sa.Text(), nullable=False),
         sa.Column(
             "document_type",
-            sa.Enum(
-                "core_rules",
-                "faq",
-                "errata",
-                "expansion_rules",
-                "strategy",
-                "other",
-                name="document_type",
-                create_type=False,
-            ),
+            postgresql.ENUM(name="document_type", create_type=False),
             nullable=False,
         ),
         sa.Column("section_path", sa.Text(), nullable=True),
@@ -559,7 +520,7 @@ def _create_tables() -> None:
         ),
         sa.Column(
             "type",
-            sa.Enum("text", "image", name="context_attachment_type", create_type=False),
+            postgresql.ENUM(name="context_attachment_type", create_type=False),
             nullable=False,
         ),
         sa.Column("content", sa.Text(), nullable=True),
@@ -599,7 +560,7 @@ def _create_tables() -> None:
         sa.Column("game_id", sa.UUID(), sa.ForeignKey("games.id"), nullable=False),
         sa.Column(
             "rating",
-            sa.Enum("positive", "negative", name="feedback_rating", create_type=False),
+            postgresql.ENUM(name="feedback_rating", create_type=False),
             nullable=False,
         ),
         sa.Column("comment", sa.Text(), nullable=True),
@@ -626,16 +587,7 @@ def _create_tables() -> None:
         ),
         sa.Column(
             "capability",
-            sa.Enum(
-                "intent_analysis",
-                "retrieval_augmentation",
-                "answer_synthesis",
-                "clarification_generation",
-                "concept_extraction",
-                "vision_processing",
-                name="model_capability",
-                create_type=False,
-            ),
+            postgresql.ENUM(name="model_capability", create_type=False),
             nullable=False,
         ),
         sa.Column("provider", sa.Text(), nullable=False),
@@ -664,16 +616,7 @@ def _create_tables() -> None:
         ),
         sa.Column(
             "capability",
-            sa.Enum(
-                "intent_analysis",
-                "retrieval_augmentation",
-                "answer_synthesis",
-                "clarification_generation",
-                "concept_extraction",
-                "vision_processing",
-                name="model_capability",
-                create_type=False,
-            ),
+            postgresql.ENUM(name="model_capability", create_type=False),
             nullable=False,
         ),
         sa.Column("provider", sa.Text(), nullable=False),
