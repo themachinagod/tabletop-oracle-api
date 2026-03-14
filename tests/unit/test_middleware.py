@@ -2,8 +2,10 @@
 
 import json
 import logging
+from collections.abc import AsyncGenerator
 from io import StringIO
-from unittest.mock import patch
+from typing import Any
+from unittest.mock import AsyncMock, patch
 
 import pytest
 import structlog
@@ -12,6 +14,30 @@ from httpx import ASGITransport, AsyncClient
 
 from tabletop_oracle.logging import configure_logging
 from tabletop_oracle.main import app
+
+
+async def _override_db_healthy() -> AsyncGenerator[AsyncMock, None]:
+    """Dependency override yielding a healthy mock DB session for middleware tests."""
+    session = AsyncMock()
+    session.execute = AsyncMock(return_value=None)
+    session.commit = AsyncMock()
+    session.rollback = AsyncMock()
+    try:
+        yield session
+        await session.commit()
+    except Exception:
+        await session.rollback()
+        raise
+
+
+@pytest.fixture(autouse=True)
+def _mock_db_for_health() -> Any:
+    """Override get_db so health endpoint works without a real database."""
+    from tabletop_oracle.api.deps import get_db
+
+    app.dependency_overrides[get_db] = _override_db_healthy
+    yield
+    app.dependency_overrides.clear()
 
 
 def _make_test_app(*, inject_user: bool = False) -> FastAPI:

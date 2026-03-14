@@ -3,7 +3,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from tabletop_oracle.api.health import router as health_router
+from tabletop_oracle.api.router import api_router
 from tabletop_oracle.config import settings
 from tabletop_oracle.errors.handlers import register_exception_handlers
 from tabletop_oracle.logging import configure_logging
@@ -37,4 +37,4 @@ app.add_middleware(LoggingMiddleware)
 app.add_middleware(CorrelationMiddleware)
 
 # Routes
-app.include_router(health_router, prefix="/api/v1")
+app.include_router(api_router, prefix="/api/v1")
