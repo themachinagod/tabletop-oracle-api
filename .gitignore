@@ -37,8 +37,8 @@ ENV/
 coverage.xml
 htmlcov/
 
-# Storage (local blob storage)
-storage/
+# Storage (local blob storage runtime data — root level only)
+/storage/
 
 # OS
 .DS_Store

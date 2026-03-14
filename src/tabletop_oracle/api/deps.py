@@ -6,7 +6,7 @@ from typing import Annotated
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from tabletop_oracle.models.base import async_session_factory
+from tabletop_oracle.database import async_session_factory
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
