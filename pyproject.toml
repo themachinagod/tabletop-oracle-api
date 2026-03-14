@@ -43,6 +43,11 @@ select = ["E", "F", "I", "N", "UP", "B", "A", "SIM", "TCH", "RUF"]
 # UP046: Pydantic BaseModel generics require Generic[T] — PEP 695 not yet supported
 ignore = ["UP046"]
 
+[tool.ruff.lint.per-file-ignores]
+# SQLAlchemy ORM models need uuid/datetime at runtime for Mapped[] type resolution.
+# TCH003 incorrectly suggests moving them to TYPE_CHECKING blocks.
+"src/tabletop_oracle/models/*.py" = ["TCH003"]
+
 [tool.ruff.lint.isort]
 known-first-party = ["tabletop_oracle"]
 
