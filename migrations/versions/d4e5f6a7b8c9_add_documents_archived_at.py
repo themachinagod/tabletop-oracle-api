@@ -40,7 +40,5 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     """Remove archived_at column and its index from documents table."""
-    op.execute(
-        sa.text("DROP INDEX IF EXISTS idx_documents_archived")
-    )
+    op.execute(sa.text("DROP INDEX IF EXISTS idx_documents_archived"))
     op.drop_column("documents", "archived_at")

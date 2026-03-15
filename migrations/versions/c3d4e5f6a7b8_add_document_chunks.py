@@ -48,9 +48,7 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.Column("chunk_index", sa.Integer(), nullable=False),
-        sa.Column(
-            "chunk_type", sa.Text(), nullable=False, server_default="text"
-        ),
+        sa.Column("chunk_type", sa.Text(), nullable=False, server_default="text"),
         sa.Column("content", sa.Text(), nullable=False),
         sa.Column("section_path", sa.Text(), nullable=True),
         sa.Column("heading", sa.Text(), nullable=True),
@@ -75,12 +73,8 @@ def upgrade() -> None:
             name="uq_chunk_index",
         ),
     )
-    op.create_index(
-        "idx_chunks_document", "document_chunks", ["document_id"]
-    )
-    op.create_index(
-        "idx_chunks_version", "document_chunks", ["version_id"]
-    )
+    op.create_index("idx_chunks_document", "document_chunks", ["document_id"])
+    op.create_index("idx_chunks_version", "document_chunks", ["version_id"])
 
 
 def downgrade() -> None:
