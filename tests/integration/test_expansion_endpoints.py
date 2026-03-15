@@ -31,7 +31,7 @@ _BASE_URL = "/api/v1/games"
 @pytest.fixture
 async def _seed_user(db_session: AsyncSession) -> uuid.UUID:
     """Create a curator user via raw SQL for game/expansion creation attribution."""
-    user_id = uuid.UUID("00000000-0000-0000-0000-000000000001")
+    user_id = uuid.UUID("00000000-0000-0000-0000-000000000000")
     await db_session.execute(
         text(
             "INSERT INTO users (id, oauth_provider, oauth_subject_id, email, display_name, role) "
@@ -40,9 +40,9 @@ async def _seed_user(db_session: AsyncSession) -> uuid.UUID:
         {
             "id": str(user_id),
             "provider": "google",
-            "sub": "bypass-subject-exp",
-            "email": "exp-test@localhost",
-            "name": "Expansion Tester",
+            "sub": "bypass-subject",
+            "email": "dev@localhost",
+            "name": "Dev Bypass",
             "role": "curator",
         },
     )
