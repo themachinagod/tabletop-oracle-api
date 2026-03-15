@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
 from tabletop_oracle.models.knowledge_graph import (
     KGAssociation,
@@ -106,6 +106,20 @@ class KGConceptRepository:
         await self._session.flush()
         return concept
 
+    async def delete(self, concept_id: uuid.UUID) -> None:
+        """Delete a concept by primary key.
+
+        Cascading FKs on sources, embeddings, and associations handle
+        cleanup of related rows.
+
+        Args:
+            concept_id: UUID of the concept to delete.
+        """
+        concept = await self.get_by_id(concept_id)
+        if concept is not None:
+            await self._session.delete(concept)
+            await self._session.flush()
+
 
 class KGConceptSourceRepository:
     """Data access for KGConceptSource entities.
@@ -168,6 +182,36 @@ class KGConceptSourceRepository:
         self._session.add(source)
         await self._session.flush()
         return source
+
+    async def list_by_document(
+        self,
+        document_id: uuid.UUID,
+    ) -> list[KGConceptSource]:
+        """List all source references from a specific document.
+
+        Used during document removal to find all concepts contributed
+        to by this document.
+
+        Args:
+            document_id: UUID of the source document.
+
+        Returns:
+            List of KGConceptSource entities from this document.
+        """
+        stmt = select(KGConceptSource).where(
+            KGConceptSource.document_id == document_id,
+        )
+        result = await self._session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def delete(self, source_id: uuid.UUID) -> None:
+        """Delete a concept source by primary key.
+
+        Args:
+            source_id: UUID of the source to delete.
+        """
+        await self._session.execute(delete(KGConceptSource).where(KGConceptSource.id == source_id))
+        await self._session.flush()
 
     async def update_authoritative(
         self,
