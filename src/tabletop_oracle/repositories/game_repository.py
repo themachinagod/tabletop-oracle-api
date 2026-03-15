@@ -101,7 +101,7 @@ class GameRepository(BaseRepository[Game]):
         doc_count_stmt = (
             select(func.count())
             .select_from(Document)
-            .where(Document.game_id == game_id, Document.status == DocumentStatus.PROCESSED)
+            .where(Document.game_id == game_id, Document.status == DocumentStatus.PROCESSED.value)
         )
         doc_result = await self._session.execute(doc_count_stmt)
         doc_count: int = doc_result.scalar_one()
@@ -153,7 +153,7 @@ class GameRepository(BaseRepository[Game]):
                 Document.game_id,
                 func.count().label("doc_count"),
             )
-            .where(Document.status == DocumentStatus.PROCESSED)
+            .where(Document.status == DocumentStatus.PROCESSED.value)
             .group_by(Document.game_id)
             .subquery()
         )
@@ -343,11 +343,9 @@ class GameRepository(BaseRepository[Game]):
 
         # Complexity (IN / OR logic)
         if filters.complexity:
-            # Convert StrEnum values to the ORM enum for comparison
-            from tabletop_oracle.models.enums import GameComplexity
-
-            orm_values = [GameComplexity(c.value) for c in filters.complexity]
-            query = query.where(Game.complexity.in_(orm_values))
+            # Use string values directly to avoid asyncpg enum serialization issues
+            complexity_values = [c.value for c in filters.complexity]
+            query = query.where(Game.complexity.in_(complexity_values))
 
         # Tags (AND logic via correlated subqueries)
         if filters.tags:

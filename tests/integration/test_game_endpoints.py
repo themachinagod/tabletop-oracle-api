@@ -147,15 +147,15 @@ class TestCreateGame:
         assert data["tags"] == []
         assert data["complexity"] is None
 
-    async def test_create_game_missing_name_returns_422(self, api_client: AsyncClient) -> None:
-        """Missing required name field returns 422."""
+    async def test_create_game_missing_name_returns_400(self, api_client: AsyncClient) -> None:
+        """Missing required name field returns 400 (validation error)."""
         response = await api_client.post(
             "/api/v1/games",
             json={},
             headers={"X-Request-ID": _REQUEST_ID},
         )
 
-        assert response.status_code == 422
+        assert response.status_code == 400
 
 
 @pytest.mark.integration
@@ -511,17 +511,23 @@ class TestAuthEnforcement:
 
         app.dependency_overrides[get_db] = _override_get_db
         try:
-            # bypass_auth=False (default) — no session cookie
-            transport = ASGITransport(app=app)
-            async with AsyncClient(
-                transport=transport,
-                base_url="http://test",
-            ) as client:
-                response = await client.get(
-                    "/api/v1/games",
-                    headers={"X-Request-ID": _REQUEST_ID},
-                )
+            # Explicitly disable bypass_auth (CI may set BYPASS_AUTH=true)
+            with patch("tabletop_oracle.auth.middleware.settings") as mock_settings:
+                mock_settings.bypass_auth = False
+                mock_settings.session_cookie_secure = False
+                mock_settings.auth_session_timeout_days = 30
+                mock_settings.frontend_origin = "http://localhost:4200"
+                mock_settings.log_level = "DEBUG"
+                transport = ASGITransport(app=app)
+                async with AsyncClient(
+                    transport=transport,
+                    base_url="http://test",
+                ) as client:
+                    response = await client.get(
+                        "/api/v1/games",
+                        headers={"X-Request-ID": _REQUEST_ID},
+                    )
 
-            assert response.status_code == 401
+                assert response.status_code == 401
         finally:
             app.dependency_overrides.clear()

@@ -278,23 +278,22 @@ class GameService:
     def _to_orm_complexity(
         complexity: Any,
     ) -> Any:
-        """Convert schema complexity enum to ORM enum if needed.
+        """Convert schema complexity to a string value for the ORM layer.
 
-        The Pydantic schema uses GameComplexityFilter (StrEnum) while the
-        ORM model uses GameComplexity (enum.Enum). This bridges the gap.
+        Returns the lowercase string value (e.g. "medium") rather than a
+        Python enum member, avoiding asyncpg native_enum serialization
+        issues where the enum member's .name (uppercase) is sent instead
+        of .value (lowercase).
 
         Args:
             complexity: A GameComplexityFilter value, None, or UNSET.
 
         Returns:
-            The corresponding GameComplexity ORM enum value, or None.
+            The lowercase string value for the DB enum, or None.
         """
         if complexity is None:
             return None
 
-        from tabletop_oracle.models.enums import GameComplexity
-        from tabletop_oracle.schemas.game import GameComplexityFilter
-
-        if isinstance(complexity, GameComplexityFilter):
-            return GameComplexity(complexity.value)
+        if hasattr(complexity, "value"):
+            return complexity.value
         return complexity
