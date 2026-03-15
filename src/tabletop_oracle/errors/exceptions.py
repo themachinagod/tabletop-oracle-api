@@ -151,6 +151,24 @@ class RateLimitedError(AppError):
         super().__init__(message=message)
 
 
+class ConfigurationError(AppError):
+    """Required system configuration is missing or invalid.
+
+    Used when a required configuration entry (e.g. a model slot) is not
+    present in the database. Maps to 500 because this is a server-side
+    setup issue, not a client error.
+
+    Args:
+        message: Description of the missing or invalid configuration.
+    """
+
+    status_code: int = 500
+    code: str = "CONFIGURATION_ERROR"
+
+    def __init__(self, message: str = "Required configuration is missing") -> None:
+        super().__init__(message=message)
+
+
 class ServiceUnavailableError(AppError):
     """Downstream service or resource is unavailable."""
 
