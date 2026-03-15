@@ -1,18 +1,30 @@
-"""Document and DocumentVersion ORM models.
+"""Document, DocumentVersion, and DocumentChunk ORM models.
 
-Maps to the ``documents`` and ``document_versions`` tables. Documents
-diverge from the standard Base pattern: they use ``uploaded_at`` instead
-of ``created_at`` and have no ``created_at`` column. DocumentVersions
-have neither ``created_at`` nor ``updated_at``.
+Maps to the ``documents``, ``document_versions``, and ``document_chunks``
+tables. Documents diverge from the standard Base pattern: they use
+``uploaded_at`` instead of ``created_at`` and have no ``created_at``
+column. DocumentVersions have neither ``created_at`` nor ``updated_at``.
+DocumentChunks have ``created_at`` only (append-only).
 """
 
 from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import TIMESTAMP, Boolean, Enum, ForeignKey, Integer, Text, func, text
+from sqlalchemy import (
+    TIMESTAMP,
+    Boolean,
+    Enum,
+    ForeignKey,
+    Integer,
+    Text,
+    UniqueConstraint,
+    func,
+    text,
+)
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from tabletop_oracle.models.base import MappedBase
@@ -44,6 +56,7 @@ class Document(MappedBase):
         uploaded_at: When the document was first uploaded.
         processed_at: When processing completed (optional).
         updated_at: Last modification timestamp (trigger-managed).
+        archived_at: Soft-delete timestamp (null = active).
     """
 
     __tablename__ = "documents"
@@ -96,11 +109,19 @@ class Document(MappedBase):
         server_default=func.now(),
         nullable=False,
     )
+    archived_at: Mapped[datetime | None] = mapped_column(
+        TIMESTAMP(timezone=True),
+        nullable=True,
+    )
 
     # Relationships
     game: Mapped[Game] = relationship(back_populates="documents")
     expansion: Mapped[Expansion | None] = relationship(back_populates="documents")
     versions: Mapped[list[DocumentVersion]] = relationship(
+        back_populates="document",
+        cascade="all, delete-orphan",
+    )
+    chunks: Mapped[list[DocumentChunk]] = relationship(
         back_populates="document",
         cascade="all, delete-orphan",
     )
@@ -158,3 +179,69 @@ class DocumentVersion(MappedBase):
     # Relationships
     document: Mapped[Document] = relationship(back_populates="versions")
     uploader: Mapped[User] = relationship(back_populates="document_versions")
+    chunks: Mapped[list[DocumentChunk]] = relationship(
+        back_populates="version",
+        cascade="all, delete-orphan",
+    )
+
+
+class DocumentChunk(MappedBase):
+    """Content chunk produced by the ingestion pipeline.
+
+    Chunks are the pipeline's deliverable: structured, traceable pieces
+    of document content consumed by the KG engine and used for preview.
+    Append-only -- has ``created_at`` but no ``updated_at``.
+
+    Attributes:
+        document_id: FK to the parent document (CASCADE on delete).
+        version_id: FK to the specific document version (CASCADE on delete).
+        chunk_index: Sequential position within the document version.
+        chunk_type: Content type (text, table, image_description).
+        content: The chunk text content.
+        section_path: Hierarchical section context (e.g. "Combat > Ranged Attacks").
+        heading: Nearest heading this chunk falls under.
+        page_number: Source page number (PDF only, null for other formats).
+        token_estimate: Approximate token count for LLM context budgeting.
+        chunk_metadata: JSONB for format-specific metadata (maps to DB column ``metadata``).
+        created_at: When the chunk was created.
+    """
+
+    __tablename__ = "document_chunks"
+    __table_args__ = (
+        UniqueConstraint("document_id", "version_id", "chunk_index", name="uq_chunk_index"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        primary_key=True,
+        server_default=text("gen_random_uuid()"),
+    )
+    document_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("documents.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    version_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("document_versions.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    chunk_type: Mapped[str] = mapped_column(Text, nullable=False, server_default="text")
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    section_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    heading: Mapped[str | None] = mapped_column(Text, nullable=True)
+    page_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    token_estimate: Mapped[int] = mapped_column(Integer, nullable=False)
+    chunk_metadata: Mapped[dict[str, Any]] = mapped_column(
+        "metadata",
+        JSONB(astext_type=Text()),
+        nullable=False,
+        server_default=text("'{}'::jsonb"),
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+
+    # Relationships
+    document: Mapped[Document] = relationship(back_populates="chunks")
+    version: Mapped[DocumentVersion] = relationship(back_populates="chunks")

@@ -7,7 +7,7 @@ Alembic auto-detection of schema changes.
 
 from tabletop_oracle.models.auth_session import AuthSession
 from tabletop_oracle.models.base import Base, MappedBase
-from tabletop_oracle.models.document import Document, DocumentVersion
+from tabletop_oracle.models.document import Document, DocumentChunk, DocumentVersion
 from tabletop_oracle.models.enums import (
     ContextAttachmentType,
     DocumentFormat,
@@ -38,6 +38,7 @@ __all__ = [
     "ContextAttachment",
     "ContextAttachmentType",
     "Document",
+    "DocumentChunk",
     "DocumentFormat",
     "DocumentStatus",
     "DocumentType",
