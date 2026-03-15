@@ -122,3 +122,19 @@ class ExpansionListResponse(ExpansionResponse):
     """
 
     document_count: int
+
+
+# ---------------------------------------------------------------------------
+# Filter schemas
+# ---------------------------------------------------------------------------
+
+
+class ExpansionFilters(BaseModel):
+    """Parsed query parameters for the expansion list endpoint.
+
+    Attributes:
+        archived: Whether to include archived expansions. Default false
+            (active only).
+    """
+
+    archived: bool = False
