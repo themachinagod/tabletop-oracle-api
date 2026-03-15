@@ -6,10 +6,9 @@
     {
       "id": "GT-001",
       "category": "single-doc-factual",
-      "question": "How many resource types are there in Catan?",
+      "question": "What are the five resource types in Catan?",
       "expected": {
-        "answer_contains": ["five", "5"],
-        "answer_contains_any": ["lumber", "brick", "wool", "grain", "ore"],
+        "answer_contains": ["lumber", "wool", "grain", "brick", "ore"],
         "must_cite": true,
         "min_confidence": 0.7,
         "expected_document_types": ["core_rules"]
@@ -17,6 +16,41 @@
     },
     {
       "id": "GT-002",
+      "category": "single-doc-factual",
+      "question": "How many terrain hexes are used to build the island in Catan?",
+      "expected": {
+        "answer_contains": ["19"],
+        "answer_contains_any": ["forest", "pasture", "fields", "hills", "mountains", "desert"],
+        "must_cite": true,
+        "min_confidence": 0.7,
+        "expected_document_types": ["core_rules"]
+      }
+    },
+    {
+      "id": "GT-003",
+      "category": "single-doc-factual",
+      "question": "How many development cards are in the Catan base game?",
+      "expected": {
+        "answer_contains": ["25"],
+        "answer_contains_any": ["knight", "victory point", "road building", "year of plenty", "monopoly"],
+        "must_cite": true,
+        "min_confidence": 0.7,
+        "expected_document_types": ["core_rules"]
+      }
+    },
+    {
+      "id": "GT-004",
+      "category": "single-doc-factual",
+      "question": "What resources does a settlement cost in Catan?",
+      "expected": {
+        "answer_contains": ["brick", "lumber", "wool", "grain"],
+        "must_cite": true,
+        "min_confidence": 0.7,
+        "expected_document_types": ["core_rules"]
+      }
+    },
+    {
+      "id": "GT-005",
       "category": "single-doc-procedural",
       "question": "What happens when you roll a 7 in Catan?",
       "expected": {
@@ -28,7 +62,127 @@
       }
     },
     {
-      "id": "GT-003",
+      "id": "GT-006",
+      "category": "single-doc-procedural",
+      "question": "What are the three phases of a player's turn in Catan?",
+      "expected": {
+        "answer_contains_any": ["roll", "dice", "trade", "build"],
+        "must_cite": true,
+        "min_confidence": 0.7,
+        "expected_document_types": ["core_rules"],
+        "notes": "Turn structure: roll dice for resources, trade, then build."
+      }
+    },
+    {
+      "id": "GT-007",
+      "category": "single-doc-procedural",
+      "question": "How does maritime trade work in Catan?",
+      "expected": {
+        "answer_contains_any": ["4:1", "3:1", "2:1", "bank", "harbour"],
+        "must_cite": true,
+        "min_confidence": 0.7,
+        "expected_document_types": ["core_rules"],
+        "notes": "Default 4:1 bank trade, 3:1 generic harbour, 2:1 specific harbour."
+      }
+    },
+    {
+      "id": "GT-008",
+      "category": "single-doc-procedural",
+      "question": "How does the Monopoly development card work in Catan?",
+      "expected": {
+        "answer_contains": ["monopoly"],
+        "answer_contains_any": ["resource type", "all other players", "give all"],
+        "must_cite": true,
+        "min_confidence": 0.7,
+        "expected_document_types": ["core_rules"]
+      }
+    },
+    {
+      "id": "GT-009",
+      "category": "single-doc-factual",
+      "question": "What is the distance rule for placing settlements in Catan?",
+      "expected": {
+        "answer_contains_any": ["2 edges", "adjacent intersections"],
+        "must_cite": true,
+        "min_confidence": 0.7,
+        "expected_document_types": ["core_rules"],
+        "notes": "No two settlements may be on adjacent intersections -- at least 2 edges between them."
+      }
+    },
+    {
+      "id": "GT-010",
+      "category": "single-doc-factual",
+      "question": "How do you earn the Largest Army card in Catan?",
+      "expected": {
+        "answer_contains": ["knight"],
+        "answer_contains_any": ["3", "three"],
+        "must_cite": true,
+        "min_confidence": 0.7,
+        "expected_document_types": ["core_rules"],
+        "notes": "First player to play 3 knight cards receives Largest Army, worth 2 VP."
+      }
+    },
+    {
+      "id": "GT-011",
+      "category": "expansion-specific",
+      "question": "What is the pirate in Catan: Seafarers?",
+      "expected": {
+        "answer_contains": ["pirate"],
+        "answer_contains_any": ["sea", "ship", "counterpart", "robber"],
+        "must_cite": true,
+        "min_confidence": 0.6,
+        "expected_document_types": ["expansion_rules"]
+      }
+    },
+    {
+      "id": "GT-012",
+      "category": "expansion-specific",
+      "question": "What do gold river hexes do in Catan: Seafarers?",
+      "expected": {
+        "answer_contains": ["gold river"],
+        "answer_contains_any": ["choose", "any", "resource"],
+        "must_cite": true,
+        "min_confidence": 0.6,
+        "expected_document_types": ["expansion_rules"],
+        "notes": "Settlement owners choose any 1 resource; city owners choose any 2."
+      }
+    },
+    {
+      "id": "GT-013",
+      "category": "expansion-specific",
+      "question": "What does it cost to build a ship in Catan: Seafarers?",
+      "expected": {
+        "answer_contains": ["wool", "lumber"],
+        "must_cite": true,
+        "min_confidence": 0.7,
+        "expected_document_types": ["expansion_rules"]
+      }
+    },
+    {
+      "id": "GT-014",
+      "category": "expansion-specific",
+      "question": "Can an open ship be moved in Seafarers, and if so, under what conditions?",
+      "expected": {
+        "answer_contains_any": ["open", "last ship", "moved"],
+        "must_cite": true,
+        "min_confidence": 0.6,
+        "expected_document_types": ["expansion_rules"],
+        "notes": "Open ships (end of route, not connecting two buildings) can be moved but not on the turn they were built."
+      }
+    },
+    {
+      "id": "GT-015",
+      "category": "expansion-specific",
+      "question": "Name at least two island scenarios included in Catan: Seafarers.",
+      "expected": {
+        "answer_contains_any": ["Heading to New Shores", "Four Islands", "Through the Desert", "Fog Island", "new shores", "four islands"],
+        "must_cite": true,
+        "min_confidence": 0.6,
+        "expected_document_types": ["expansion_rules"]
+      }
+    },
+    {
+      "id": "GT-016",
       "category": "cross-doc-association",
       "question": "How do ships in Seafarers differ from roads in the base game?",
       "expected": {
@@ -36,29 +190,85 @@
         "must_cite": true,
         "min_citations": 2,
         "min_confidence": 0.5,
-        "expected_document_types": ["core_rules", "expansion_rules"]
+        "expected_document_types": ["core_rules", "expansion_rules"],
+        "notes": "Must reference both base game roads and Seafarers ships -- validates cross-document association."
       }
     },
     {
-      "id": "GT-004",
-      "category": "expansion-specific",
-      "question": "What is the pirate in Catan: Seafarers?",
+      "id": "GT-017",
+      "category": "cross-doc-association",
+      "question": "How does the Longest Road work differently when playing with the Seafarers expansion?",
       "expected": {
-        "answer_contains": ["pirate"],
+        "answer_contains_any": ["ship", "shipping route", "trade route"],
+        "answer_contains": ["road"],
         "must_cite": true,
-        "min_confidence": 0.6,
-        "expected_document_types": ["expansion_rules"]
+        "min_citations": 2,
+        "min_confidence": 0.5,
+        "expected_document_types": ["core_rules", "expansion_rules"],
+        "notes": "Base game: roads only, 5 segments. Seafarers: roads + ships combined, must connect at settlements/cities."
       }
     },
     {
-      "id": "GT-005",
+      "id": "GT-018",
+      "category": "cross-doc-association",
+      "question": "When a 7 is rolled in a game with Seafarers, what options does the active player have compared to the base game?",
+      "expected": {
+        "answer_contains": ["robber"],
+        "answer_contains_any": ["pirate", "choose", "either"],
+        "must_cite": true,
+        "min_citations": 2,
+        "min_confidence": 0.5,
+        "expected_document_types": ["core_rules", "expansion_rules"],
+        "notes": "Base game: must move robber. Seafarers: choose to move robber OR pirate (not both)."
+      }
+    },
+    {
+      "id": "GT-019",
+      "category": "cross-doc-association",
+      "question": "How do victory point targets differ between the Catan base game and Seafarers scenarios?",
+      "expected": {
+        "answer_contains_any": ["10", "12", "14"],
+        "must_cite": true,
+        "min_citations": 2,
+        "min_confidence": 0.5,
+        "expected_document_types": ["core_rules", "expansion_rules"],
+        "notes": "Base game: 10 VP. Seafarers scenarios: typically 12-14 VP."
+      }
+    },
+    {
+      "id": "GT-020",
       "category": "strategy",
       "question": "What is a good opening strategy in Catan?",
       "expected": {
-        "answer_contains_any": ["settlement", "resource", "port", "road"],
+        "answer_contains_any": ["settlement", "resource", "port", "road", "harbour"],
         "must_cite": true,
         "min_confidence": 0.4,
-        "expected_document_types": ["core_rules"]
+        "expected_document_types": ["core_rules"],
+        "notes": "Strategy question -- lower confidence threshold expected. Answer should reference game mechanics, not external meta."
+      }
+    },
+    {
+      "id": "GT-021",
+      "category": "strategy",
+      "question": "Why might a player prioritise settling near a gold river hex in Seafarers?",
+      "expected": {
+        "answer_contains_any": ["gold river", "choose", "any resource", "flexibility"],
+        "must_cite": true,
+        "min_confidence": 0.4,
+        "expected_document_types": ["expansion_rules"],
+        "notes": "Strategy question grounded in gold river mechanics -- player can choose any resource, providing flexibility."
+      }
+    },
+    {
+      "id": "GT-022",
+      "category": "strategy",
+      "question": "What are the benefits and risks of playing many knight cards in Catan?",
+      "expected": {
+        "answer_contains_any": ["Largest Army", "robber", "knight"],
+        "must_cite": true,
+        "min_confidence": 0.4,
+        "expected_document_types": ["core_rules"],
+        "notes": "Benefits: Largest Army (2 VP), robber control. Must reference documented mechanics."
       }
     }
   ]

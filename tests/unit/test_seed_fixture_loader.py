@@ -549,7 +549,7 @@ class TestLoadGroundTruth:
         gt = loader.load_ground_truth()
         assert isinstance(gt, GroundTruthFixture)
         assert gt.game == "Catan"
-        assert len(gt.questions) == 5
+        assert len(gt.questions) >= 15
 
     def test_ground_truth_question_fields(self) -> None:
         """Ground truth questions have expected fields."""
@@ -565,10 +565,10 @@ class TestLoadGroundTruth:
         """Expected criteria are parsed correctly."""
         loader = SeedFixtureLoader(_REAL_FIXTURES_DIR)
         gt = loader.load_ground_truth()
-        q3 = next(q for q in gt.questions if q.id == "GT-003")
-        assert q3.expected.min_citations == 2
-        assert "core_rules" in q3.expected.expected_document_types
-        assert "expansion_rules" in q3.expected.expected_document_types
+        q16 = next(q for q in gt.questions if q.id == "GT-016")
+        assert q16.expected.min_citations == 2
+        assert "core_rules" in q16.expected.expected_document_types
+        assert "expansion_rules" in q16.expected.expected_document_types
 
     def test_load_ground_truth_from_temp(self, tmp_path: Path) -> None:
         """Loads ground truth from temp fixtures."""
