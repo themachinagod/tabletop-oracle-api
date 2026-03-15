@@ -12,6 +12,7 @@ from tabletop_oracle.api.expansions import router as expansions_router
 from tabletop_oracle.api.games import router as games_router
 from tabletop_oracle.api.health import router as health_router
 from tabletop_oracle.api.knowledge_graph import router as knowledge_graph_router
+from tabletop_oracle.api.messages import router as messages_router
 from tabletop_oracle.api.sse import router as sse_router
 
 api_router = APIRouter()
@@ -37,5 +38,7 @@ api_router.include_router(documents_router, prefix="/games/{game_id}/documents")
 # Knowledge Graph — nested under /games/{game_id}/knowledge-graph, curator role required
 api_router.include_router(knowledge_graph_router, prefix="/games/{game_id}/knowledge-graph")
 
-# api_router.include_router(sessions_router, prefix="/sessions")  # authenticated
+# Messages — nested under /sessions/{session_id}/messages, session ownership required
+api_router.include_router(messages_router, prefix="/sessions")
+
 # api_router.include_router(admin_router, prefix="/admin")     # curator role
