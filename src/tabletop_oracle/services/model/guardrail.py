@@ -7,15 +7,19 @@ the ``guardrail_config`` table and checks current usage via
 
 Enforcement is skipped entirely when ``guardrail_config.enforcement_enabled``
 is False (master toggle per PRD-007 Section 3.3).
+
+Extended for EPIC-005 with admin operations: ``get_config()`` and
+``update_config()`` for the guardrail config admin API.
 """
 
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from sqlalchemy import select
 
+from tabletop_oracle.errors.exceptions import NotFoundError
 from tabletop_oracle.models.guardrail import GuardrailConfig
 from tabletop_oracle.services.model.types import GuardrailCheckResult
 
@@ -38,6 +42,19 @@ _PER_SESSION_DENIAL = (
 )
 _DAILY_DENIAL = (
     "The daily usage limit has been reached. Try again tomorrow or contact your administrator."
+)
+
+#: Fields on GuardrailConfig that are updatable via the admin API.
+_UPDATABLE_FIELDS = frozenset(
+    {
+        "enforcement_enabled",
+        "max_tokens_per_query",
+        "max_model_calls_per_query",
+        "max_queries_per_session",
+        "daily_token_budget",
+        "daily_query_budget",
+        "per_document_ingestion_limit",
+    }
 )
 
 
@@ -91,6 +108,9 @@ class GuardrailService:
     Enforcement is skipped entirely when
     ``guardrail_config.enforcement_enabled`` is False (master toggle
     per PRD-007 Section 3.3).
+
+    Admin operations (``get_config``, ``update_config``) are used by
+    the admin API for EPIC-005 configuration management.
 
     Args:
         db: SQLAlchemy async session for database operations.
@@ -267,6 +287,55 @@ class GuardrailService:
             },
         )
         return GuardrailCheckResult(allowed=True)
+
+    async def get_config(self) -> GuardrailConfig:
+        """Get the current guardrail configuration.
+
+        Reads the single-row guardrail_config from the database.
+
+        Returns:
+            The GuardrailConfig ORM entity.
+
+        Raises:
+            NotFoundError: If no guardrail configuration row exists.
+        """
+        config = await self._load_config()
+        if config is None:
+            raise NotFoundError("Guardrail config", "default")
+        return config
+
+    async def update_config(
+        self,
+        updates: dict[str, Any],
+    ) -> GuardrailConfig:
+        """Update guardrail configuration (partial update).
+
+        Only fields present in ``updates`` are modified. Field names
+        are validated against the known updatable set.
+
+        Args:
+            updates: Mapping of field names to new values.
+
+        Returns:
+            Updated GuardrailConfig entity.
+
+        Raises:
+            NotFoundError: If no guardrail configuration row exists.
+        """
+        config = await self._load_config()
+        if config is None:
+            raise NotFoundError("Guardrail config", "default")
+
+        valid_updates = {k: v for k, v in updates.items() if k in _UPDATABLE_FIELDS}
+        if not valid_updates:
+            return config
+
+        for field_name, value in valid_updates.items():
+            setattr(config, field_name, value)
+
+        await self._db.flush()
+        await self._db.refresh(config)
+        return config
 
     async def _load_config(self) -> GuardrailConfig | None:
         """Load the single-row guardrail configuration from the database.
