@@ -9,6 +9,7 @@ from tabletop_oracle.repositories.kg_repository import (
     KGConceptRepository,
     KGConceptSourceRepository,
 )
+from tabletop_oracle.repositories.message_repository import MessageRepository
 
 __all__ = [
     "ExpansionRepository",
@@ -18,4 +19,5 @@ __all__ = [
     "KGAuditRepository",
     "KGConceptRepository",
     "KGConceptSourceRepository",
+    "MessageRepository",
 ]
