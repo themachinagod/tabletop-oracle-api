@@ -213,6 +213,7 @@ class TestEnums:
                     "clarification_generation",
                     "concept_extraction",
                     "vision_processing",
+                    "embedding",
                 ],
             ),
         ],

@@ -107,3 +107,4 @@ class ModelCapability(enum.Enum):
     CLARIFICATION_GENERATION = "clarification_generation"
     CONCEPT_EXTRACTION = "concept_extraction"
     VISION_PROCESSING = "vision_processing"
+    EMBEDDING = "embedding"
