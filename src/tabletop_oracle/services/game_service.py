@@ -75,6 +75,27 @@ class GameService:
 
         return game
 
+    async def get_game_detail(self, game_id: uuid.UUID) -> dict[str, Any]:
+        """Fetch a game with expansions, tags, and aggregated counts.
+
+        Returns the full detail needed for the GameDetailResponse, including
+        inline expansions and document/expansion counts.
+
+        Args:
+            game_id: UUID of the game to retrieve.
+
+        Returns:
+            Dict with keys ``game``, ``expansions``, ``document_count``,
+            ``expansion_count``, and ``tags``.
+
+        Raises:
+            NotFoundError: If no game exists with the given ID.
+        """
+        detail = await self._repo.get_detail(game_id)
+        if detail is None:
+            raise NotFoundError("Game", str(game_id))
+        return detail
+
     async def get_game(self, game_id: uuid.UUID) -> Game:
         """Fetch a game by ID or raise NotFoundError.
 
