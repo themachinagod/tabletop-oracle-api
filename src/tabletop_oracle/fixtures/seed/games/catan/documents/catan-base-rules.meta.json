@@ -1,0 +1,8 @@
+{
+  "name": "Catan Base Game Rules",
+  "type": "core_rules",
+  "format": "pdf",
+  "expansion_id": null,
+  "file": "catan-base-rules.pdf",
+  "notes": "Official 5th edition rulebook. Contains setup, gameplay, building, trading, development cards, robber, victory conditions."
+}

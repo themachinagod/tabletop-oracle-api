@@ -1,0 +1,65 @@
+{
+  "version": "1.0.0",
+  "game": "Catan",
+  "description": "Ground truth Q&A for Catan pilot game validation",
+  "questions": [
+    {
+      "id": "GT-001",
+      "category": "single-doc-factual",
+      "question": "How many resource types are there in Catan?",
+      "expected": {
+        "answer_contains": ["five", "5"],
+        "answer_contains_any": ["lumber", "brick", "wool", "grain", "ore"],
+        "must_cite": true,
+        "min_confidence": 0.7,
+        "expected_document_types": ["core_rules"]
+      }
+    },
+    {
+      "id": "GT-002",
+      "category": "single-doc-procedural",
+      "question": "What happens when you roll a 7 in Catan?",
+      "expected": {
+        "answer_contains": ["robber", "discard"],
+        "answer_contains_any": ["more than 7", "half"],
+        "must_cite": true,
+        "min_confidence": 0.7,
+        "expected_document_types": ["core_rules"]
+      }
+    },
+    {
+      "id": "GT-003",
+      "category": "cross-doc-association",
+      "question": "How do ships in Seafarers differ from roads in the base game?",
+      "expected": {
+        "answer_contains": ["ship", "road"],
+        "must_cite": true,
+        "min_citations": 2,
+        "min_confidence": 0.5,
+        "expected_document_types": ["core_rules", "expansion_rules"]
+      }
+    },
+    {
+      "id": "GT-004",
+      "category": "expansion-specific",
+      "question": "What is the pirate in Catan: Seafarers?",
+      "expected": {
+        "answer_contains": ["pirate"],
+        "must_cite": true,
+        "min_confidence": 0.6,
+        "expected_document_types": ["expansion_rules"]
+      }
+    },
+    {
+      "id": "GT-005",
+      "category": "strategy",
+      "question": "What is a good opening strategy in Catan?",
+      "expected": {
+        "answer_contains_any": ["settlement", "resource", "port", "road"],
+        "must_cite": true,
+        "min_confidence": 0.4,
+        "expected_document_types": ["core_rules"]
+      }
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "email": "test-player@tabletop-oracle.dev",
+  "display_name": "Test Player",
+  "oauth_provider": null,
+  "oauth_subject_id": null,
+  "role": "player",
+  "status": "active"
+}

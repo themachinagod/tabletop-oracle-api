@@ -1,0 +1,9 @@
+{
+  "email_source": "env:INITIAL_CURATOR_EMAILS",
+  "display_name": "System Administrator",
+  "oauth_provider": null,
+  "oauth_subject_id": null,
+  "role": "curator",
+  "status": "active",
+  "notes": "Email is read from INITIAL_CURATOR_EMAILS env var at seed time. oauth_provider and oauth_subject_id are null — F002 upsert-on-first-login will bind the real OAuth identity when the user first logs in."
+}

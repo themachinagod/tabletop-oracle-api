@@ -1,0 +1,12 @@
+{
+  "name": "Catan",
+  "publisher": "Catan Studio / Kosmos",
+  "year_published": 1995,
+  "edition": "5th Edition",
+  "min_players": 3,
+  "max_players": 4,
+  "description": "Trade, build, and settle the island of Catan. Collect and trade resources to build roads, settlements, and cities. Earn victory points to win.",
+  "cover_image_url": null,
+  "complexity": "medium",
+  "tags": ["strategy", "trading", "resource-management", "settlement", "dice-rolling"]
+}
