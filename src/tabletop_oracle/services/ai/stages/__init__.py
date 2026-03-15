@@ -6,8 +6,12 @@ from tabletop_oracle.services.ai.stages.context_preparation import (
 from tabletop_oracle.services.ai.stages.intent_analysis import (
     IntentAnalysisStage,
 )
+from tabletop_oracle.services.ai.stages.knowledge_retrieval import (
+    KnowledgeRetrievalStage,
+)
 
 __all__ = [
     "ContextPreparationStage",
     "IntentAnalysisStage",
+    "KnowledgeRetrievalStage",
 ]
