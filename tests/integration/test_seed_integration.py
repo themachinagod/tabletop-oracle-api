@@ -131,6 +131,60 @@ async def _count_expansions_for_game(session: AsyncSession, game_id: uuid.UUID) 
     return result.scalar_one()
 
 
+def _make_mock_doc_service() -> tuple[MagicMock, list[uuid.UUID]]:
+    """Create a mock DocumentService that tracks uploads.
+
+    Returns a mock DocumentService and a list that will be populated
+    with the IDs of uploaded documents. The mock returns documents
+    with PROCESSED status, so await_processing completes immediately.
+
+    Returns:
+        Tuple of (mock_doc_service, uploaded_doc_ids_list).
+    """
+    mock_doc = MagicMock()
+    uploaded_ids: list[uuid.UUID] = []
+
+    async def mock_upload(**kwargs: Any) -> Any:
+        doc_id = uuid.uuid4()
+        uploaded_ids.append(doc_id)
+        doc_mock = MagicMock()
+        doc_mock.id = doc_id
+        doc_mock.status = DocumentStatus.PROCESSED
+        return doc_mock
+
+    mock_doc.upload = mock_upload
+    return mock_doc, uploaded_ids
+
+
+def _build_seed_service_with_mock_docs(
+    session: AsyncSession,
+) -> tuple[SeedService, list[uuid.UUID]]:
+    """Build a SeedService with a mock DocumentService attached.
+
+    The mock DocumentService returns documents in PROCESSED status so
+    seed_all() completes fully. Also patches _find_document_by_id on
+    the service to return processed document mocks.
+
+    Args:
+        session: Active AsyncSession.
+
+    Returns:
+        Tuple of (configured SeedService, uploaded_doc_ids list).
+    """
+    mock_doc, uploaded_ids = _make_mock_doc_service()
+    service = _build_seed_service(session, doc_service=mock_doc)
+
+    # Patch _find_document_by_id so await_processing sees PROCESSED status
+    async def mock_find_doc(doc_id: uuid.UUID) -> Any:
+        doc_mock = MagicMock()
+        doc_mock.id = doc_id
+        doc_mock.status = DocumentStatus.PROCESSED
+        return doc_mock
+
+    service._find_document_by_id = mock_find_doc  # type: ignore[assignment]
+    return service, uploaded_ids
+
+
 # ---------------------------------------------------------------------------
 # Tests — Fresh seed on empty database
 # ---------------------------------------------------------------------------
@@ -145,7 +199,7 @@ class TestSeedAllFreshDatabase:
     ) -> None:
         """seed_all creates users, game, expansion, and AI config on empty DB."""
         with patch.dict(os.environ, {"INITIAL_CURATOR_EMAILS": _CURATOR_EMAIL}):
-            service = _build_seed_service(db_session)
+            service, _doc_ids = _build_seed_service_with_mock_docs(db_session)
             result = await service.seed_all()
 
         assert result.success
@@ -156,6 +210,7 @@ class TestSeedAllFreshDatabase:
         assert step_map["game"].status == StepStatus.CREATED
         assert step_map["expansion"].status == StepStatus.CREATED
         assert step_map["ai_config"].status == StepStatus.CREATED
+        assert step_map["documents"].status == StepStatus.CREATED
 
         # Verify users created
         user_count = await _count_users(db_session)
@@ -200,45 +255,15 @@ class TestSeedAllFreshDatabase:
     @pytest.mark.asyncio
     async def test_seed_all_with_mock_doc_service(self, db_session: AsyncSession) -> None:
         """seed_all with a mocked DocumentService uploads documents successfully."""
-        mock_doc = MagicMock()
-        doc_id_1 = uuid.uuid4()
-        doc_id_2 = uuid.uuid4()
-
-        mock_document_1 = MagicMock()
-        mock_document_1.id = doc_id_1
-        mock_document_1.status = DocumentStatus.PROCESSED
-
-        mock_document_2 = MagicMock()
-        mock_document_2.id = doc_id_2
-        mock_document_2.status = DocumentStatus.PROCESSED
-
-        upload_call_count = 0
-
-        async def mock_upload(**kwargs: Any) -> Any:
-            nonlocal upload_call_count
-            upload_call_count += 1
-            return mock_document_1 if upload_call_count == 1 else mock_document_2
-
-        mock_doc.upload = mock_upload
-
         with patch.dict(os.environ, {"INITIAL_CURATOR_EMAILS": _CURATOR_EMAIL}):
-            service = _build_seed_service(db_session, doc_service=mock_doc)
-
-            # Mock _find_document_by_id to return processed documents
-            async def mock_find_doc(doc_id: uuid.UUID) -> Any:
-                if doc_id == doc_id_1:
-                    return mock_document_1
-                return mock_document_2
-
-            service._find_document_by_id = mock_find_doc  # type: ignore[assignment]
-
+            service, uploaded_ids = _build_seed_service_with_mock_docs(db_session)
             result = await service.seed_all()
 
         assert result.success
         step_map = {s.step: s for s in result.steps}
         assert step_map["documents"].status == StepStatus.CREATED
         assert step_map["await_processing"].status == StepStatus.CREATED
-        assert upload_call_count == 2
+        assert len(uploaded_ids) == 2  # base rules + seafarers rules
 
 
 # ---------------------------------------------------------------------------
@@ -253,7 +278,7 @@ class TestSeedIdempotent:
     async def test_double_seed_skips_all_steps(self, db_session: AsyncSession) -> None:
         """Second seed_all run skips all steps when data already exists."""
         with patch.dict(os.environ, {"INITIAL_CURATOR_EMAILS": _CURATOR_EMAIL}):
-            service = _build_seed_service(db_session)
+            service, _doc_ids = _build_seed_service_with_mock_docs(db_session)
 
             # First run
             result1 = await service.seed_all()
@@ -293,7 +318,7 @@ class TestSeedForceRecreates:
     async def test_force_replaces_existing_data(self, db_session: AsyncSession) -> None:
         """seed_all with force=True replaces data, not duplicates."""
         with patch.dict(os.environ, {"INITIAL_CURATOR_EMAILS": _CURATOR_EMAIL}):
-            service = _build_seed_service(db_session)
+            service, _doc_ids = _build_seed_service_with_mock_docs(db_session)
 
             # Initial seed
             result1 = await service.seed_all()
@@ -336,7 +361,7 @@ class TestSeedReset:
     async def test_reset_removes_all_seed_data(self, db_session: AsyncSession) -> None:
         """After seed + reset, all seed data is removed."""
         with patch.dict(os.environ, {"INITIAL_CURATOR_EMAILS": _CURATOR_EMAIL}):
-            service = _build_seed_service(db_session)
+            service, _doc_ids = _build_seed_service_with_mock_docs(db_session)
 
             # Seed first
             seed_result = await service.seed_all()
@@ -604,7 +629,7 @@ class TestSeedResetRoundTrip:
     async def test_seed_reset_reseed_produces_same_state(self, db_session: AsyncSession) -> None:
         """Seed -> reset -> re-seed produces identical state."""
         with patch.dict(os.environ, {"INITIAL_CURATOR_EMAILS": _CURATOR_EMAIL}):
-            service = _build_seed_service(db_session)
+            service, _doc_ids = _build_seed_service_with_mock_docs(db_session)
 
             # First seed
             r1 = await service.seed_all()
