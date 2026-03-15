@@ -47,7 +47,6 @@ api_router.include_router(messages_router, prefix="/sessions")
 
 # Admin — curator-only endpoints
 api_router.include_router(admin_model_slots_router, prefix="/admin/model-slots")
-<<<<<<< HEAD
 api_router.include_router(admin_guardrail_config_router, prefix="/admin/guardrail-config")
 api_router.include_router(admin_usage_router, prefix="/admin/usage")
 api_router.include_router(admin_quality_router, prefix="/admin/quality")
