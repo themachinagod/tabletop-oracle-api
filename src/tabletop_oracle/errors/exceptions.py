@@ -177,3 +177,51 @@ class ServiceUnavailableError(AppError):
 
     def __init__(self, message: str = "Service temporarily unavailable") -> None:
         super().__init__(message=message)
+
+
+class GuardrailExceededError(AppError):
+    """A token or query guardrail would be exceeded.
+
+    Raised by ModelClient when a pre-call guardrail check fails.
+    The message contains a player-friendly explanation.
+
+    Args:
+        message: Human-readable denial message for the player.
+        guardrail_type: Which guardrail was hit (for logging/metrics).
+    """
+
+    status_code: int = 429
+    code: str = "GUARDRAIL_EXCEEDED"
+
+    def __init__(
+        self,
+        message: str = "Usage guardrail exceeded",
+        *,
+        guardrail_type: str = "",
+    ) -> None:
+        self.guardrail_type = guardrail_type
+        super().__init__(message=message)
+
+
+class ModelUnavailableError(AppError):
+    """Both primary and fallback models failed.
+
+    Raised by ModelClient when all model call attempts (including
+    retries and fallback) have been exhausted.
+
+    Args:
+        message: Description of the failure.
+        capability: The model capability that was requested.
+    """
+
+    status_code: int = 503
+    code: str = "MODEL_UNAVAILABLE"
+
+    def __init__(
+        self,
+        message: str = "AI model is currently unavailable",
+        *,
+        capability: str = "",
+    ) -> None:
+        self.capability = capability
+        super().__init__(message=message)
