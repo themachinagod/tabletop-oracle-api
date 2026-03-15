@@ -1,7 +1,8 @@
 """Graph integration service for merging extracted concepts into the KG.
 
 Integrates new concepts and associations into a game's knowledge graph,
-handling deduplication, alias resolution, and source reference tracking.
+handling deduplication, alias resolution, source reference tracking,
+and document contribution removal.
 
 Design reference: docs/architecture/epic-003-knowledge-graph-engine/design.md
 """
@@ -9,6 +10,7 @@ Design reference: docs/architecture/epic-003-knowledge-graph-engine/design.md
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from tabletop_oracle.models.knowledge_graph import (
@@ -30,6 +32,20 @@ if TYPE_CHECKING:
     from tabletop_oracle.services.kg.extraction import ExtractedConcept
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class RemovalResult:
+    """Result of removing a document's contributions from the KG.
+
+    Attributes:
+        concepts_removed: Number of concepts entirely deleted (sole-sourced).
+        concepts_updated: Number of concepts that lost a source but were
+            retained because other sources still reference them.
+    """
+
+    concepts_removed: int
+    concepts_updated: int
 
 
 class GraphIntegrationService:
@@ -176,6 +192,71 @@ class GraphIntegrationService:
             Dict mapping lowercase concept names to UUIDs.
         """
         return {c.name.lower(): c.id for c in concepts}
+
+    async def remove_document_contributions(
+        self,
+        game_id: UUID,
+        document_id: UUID,
+    ) -> RemovalResult:
+        """Remove a document's contributions from the knowledge graph.
+
+        For each concept sourced from this document:
+        - If this is the sole source: delete the concept (cascades to
+          sources, embeddings, and associations via FK ON DELETE CASCADE).
+        - If other sources remain: remove only this document's source
+          reference.
+
+        After source cleanup, orphaned associations (where either endpoint
+        concept was removed) are cleaned up by the cascade.
+
+        Args:
+            game_id: UUID of the owning game.
+            document_id: UUID of the document to remove.
+
+        Returns:
+            RemovalResult with counts of removed and updated concepts.
+        """
+        concepts_removed = 0
+        concepts_updated = 0
+
+        # Find all source references from this document
+        sources = await self._source_repo.list_by_document(
+            document_id=document_id,
+        )
+
+        # Group sources by concept_id
+        concept_sources: dict[UUID, list[KGConceptSource]] = {}
+        for source in sources:
+            concept_sources.setdefault(source.concept_id, []).append(source)
+
+        for concept_id, doc_sources in concept_sources.items():
+            # Get all sources for this concept (not just from this document)
+            all_sources = await self._source_repo.list_by_concept(concept_id)
+
+            non_doc_sources = [s for s in all_sources if s.document_id != document_id]
+
+            if not non_doc_sources:
+                # Sole source -- delete the concept (cascade handles rest)
+                await self._concept_repo.delete(concept_id)
+                concepts_removed += 1
+            else:
+                # Remove only this document's source references
+                for source in doc_sources:
+                    await self._source_repo.delete(source.id)
+                concepts_updated += 1
+
+        logger.info(
+            "Removed document %s contributions from game %s: "
+            "concepts_removed=%d concepts_updated=%d",
+            document_id,
+            game_id,
+            concepts_removed,
+            concepts_updated,
+        )
+        return RemovalResult(
+            concepts_removed=concepts_removed,
+            concepts_updated=concepts_updated,
+        )
 
     async def _integrate_single_concept(
         self,

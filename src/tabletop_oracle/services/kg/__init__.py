@@ -1,8 +1,8 @@
 """Knowledge Graph engine services.
 
 Contains concept extraction, association discovery, embedding, retrieval,
-audit logging, graph integration, conflict resolution, and supporting
-infrastructure for the KG pipeline (EPIC-003).
+audit logging, graph integration, conflict resolution, handoff implementation,
+and supporting infrastructure for the KG pipeline (EPIC-003).
 """
 
 from tabletop_oracle.services.kg.associations import (
@@ -17,7 +17,11 @@ from tabletop_oracle.services.kg.extraction import (
     ExtractedConcept,
     GameContext,
 )
-from tabletop_oracle.services.kg.integration import GraphIntegrationService
+from tabletop_oracle.services.kg.handoff_impl import KGHandoffServiceImpl
+from tabletop_oracle.services.kg.integration import (
+    GraphIntegrationService,
+    RemovalResult,
+)
 
 __all__ = [
     "AssociationDiscoveryService",
@@ -29,4 +33,6 @@ __all__ = [
     "GameContext",
     "GraphIntegrationService",
     "KGAuditService",
+    "KGHandoffServiceImpl",
+    "RemovalResult",
 ]
