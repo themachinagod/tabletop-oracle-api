@@ -1,26 +1,27 @@
-"""Message history API endpoint — paginated GET for session messages.
+"""Message API endpoints -- history and cancellation.
 
-Provides ``GET /api/v1/sessions/{session_id}/messages`` with pagination,
-sort order, session ownership validation, and the standard F001 response
-envelope. Citations are included for ai_answer messages; context attachments
-for user_question messages.
+Provides ``GET /api/v1/sessions/{session_id}/messages`` for paginated
+message history, and ``DELETE /api/v1/sessions/{session_id}/messages/{message_id}``
+for query cancellation. Pagination, sort order, session ownership
+validation, and the standard F001 response envelope are applied throughout.
 """
 
 from __future__ import annotations
 
 import logging
-import uuid  # noqa: TC003 — FastAPI needs UUID at runtime for path validation
+import uuid  # noqa: TC003 -- FastAPI needs UUID at runtime for path validation
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, Query, Request, Response
 
 from tabletop_oracle.api.deps import DbSession  # noqa: TC001
 from tabletop_oracle.api.pagination import PaginationParams, get_pagination_params
-from tabletop_oracle.api.response import ok_list
+from tabletop_oracle.api.response import ok, ok_list
 from tabletop_oracle.auth.dependencies import CurrentUserDep  # noqa: TC001
 from tabletop_oracle.repositories.message_repository import MessageRepository
-from tabletop_oracle.schemas.common import ListEnvelope  # noqa: TC001
+from tabletop_oracle.schemas.common import DataEnvelope, ListEnvelope  # noqa: TC001
 from tabletop_oracle.schemas.message import (
+    CancelResponse,
     CitationResponse,
     ContextAttachmentResponse,
     MessageResponse,
@@ -47,6 +48,57 @@ def _get_message_service(db: DbSession) -> MessageService:
     return MessageService(MessageRepository(db))
 
 
+@router.delete("/{session_id}/messages/{message_id}")
+async def cancel_message(
+    session_id: uuid.UUID,
+    message_id: uuid.UUID,
+    request: Request,
+    response: Response,
+    db: DbSession,
+    user: CurrentUserDep,
+) -> DataEnvelope[object] | None:
+    """Cancel an in-progress query.
+
+    Sets the cancellation flag on the message record. The pipeline's
+    cancel_check detects this flag between stages and emits a
+    ``stream.cancelled`` SSE event.
+
+    Returns 202 Accepted if the message was actively processing and
+    cancellation was initiated. Returns 204 No Content if the message
+    was already complete or already cancelled.
+
+    Args:
+        session_id: UUID of the game session.
+        message_id: UUID of the message to cancel.
+        request: Incoming HTTP request (provides request_id).
+        response: HTTP response (for setting status code).
+        db: Database session.
+        user: Authenticated user (session ownership enforced).
+
+    Returns:
+        DataEnvelope with CancelResponse on 202, or None on 204.
+
+    Raises:
+        NotFoundError: If the session or message does not exist, the
+            user does not own the session, or the message does not
+            belong to the session.
+    """
+    service = _get_message_service(db)
+    message, was_cancelled = await service.cancel_message(
+        session_id,
+        message_id,
+        user,
+    )
+
+    if not was_cancelled:
+        response.status_code = 204
+        return None
+
+    response.status_code = 202
+    cancel_data = CancelResponse(id=message.id, status="cancelling")
+    return ok(cancel_data, request)
+
+
 @router.get("/{session_id}/messages")
 async def list_messages(
     session_id: uuid.UUID,
@@ -57,7 +109,7 @@ async def list_messages(
     order: str = Query(
         default="asc",
         pattern="^(asc|desc)$",
-        description="Sort order by sequence: 'asc' (oldest first) or 'desc' (newest first)",
+        description=("Sort order by sequence: 'asc' (oldest first) or 'desc' (newest first)"),
     ),
 ) -> ListEnvelope[object]:
     """List messages for a game session with pagination.
@@ -72,7 +124,7 @@ async def list_messages(
         db: Database session.
         user: Authenticated user (session ownership enforced).
         pagination: Parsed pagination parameters.
-        order: Sort direction — ``"asc"`` or ``"desc"``.
+        order: Sort direction -- ``"asc"`` or ``"desc"``.
 
     Returns:
         ListEnvelope containing paginated MessageResponse items.
@@ -141,6 +193,7 @@ def _message_to_response(message: Any) -> MessageResponse:
         confidence_score=message.confidence_score,
         processing_duration_ms=message.processing_duration_ms,
         created_at=message.created_at,
+        cancelled_at=message.cancelled_at,
         citations=citations,
         context_attachments=context_attachments,
     )

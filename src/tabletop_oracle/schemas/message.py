@@ -1,8 +1,9 @@
 """Pydantic schemas for Message, Citation, and ContextAttachment responses.
 
-Covers response schemas for the message history endpoint. Citations are
-included on ai_answer messages; context attachments on user_question messages.
-All field types match the ORM models and F001 design conventions.
+Covers response schemas for the message history and cancellation endpoints.
+Citations are included on ai_answer messages; context attachments on
+user_question messages. All field types match the ORM models and F001
+design conventions.
 """
 
 from __future__ import annotations
@@ -11,6 +12,10 @@ import uuid  # noqa: TC003
 from datetime import datetime  # noqa: TC003
 
 from pydantic import BaseModel, Field
+
+# ---------------------------------------------------------------------------
+# Response schemas
+# ---------------------------------------------------------------------------
 
 
 class CitationResponse(BaseModel):
@@ -78,6 +83,7 @@ class MessageResponse(BaseModel):
         confidence_score: AI confidence 0.0-1.0 (optional, ai_answer only).
         processing_duration_ms: Response generation time in ms (optional).
         created_at: Message creation timestamp.
+        cancelled_at: Cancellation timestamp, if cancelled (optional).
         citations: Source citations (ai_answer messages only).
         context_attachments: User-provided context (user_question messages only).
     """
@@ -91,7 +97,23 @@ class MessageResponse(BaseModel):
     confidence_score: float | None
     processing_duration_ms: int | None
     created_at: datetime
+    cancelled_at: datetime | None = None
     citations: list[CitationResponse] = Field(default_factory=list)
     context_attachments: list[ContextAttachmentResponse] = Field(default_factory=list)
 
     model_config = {"from_attributes": True}
+
+
+class CancelResponse(BaseModel):
+    """Response schema for the cancellation endpoint.
+
+    Returned in the data envelope when a message cancellation is accepted.
+
+    Attributes:
+        id: The message UUID that was cancelled.
+        status: Always ``"cancelling"`` to indicate the cancellation is
+            in progress.
+    """
+
+    id: uuid.UUID
+    status: str = "cancelling"
