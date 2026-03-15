@@ -13,11 +13,10 @@ from unittest.mock import patch
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import text
 
 from tabletop_oracle.api.deps import get_db
 from tabletop_oracle.main import app
-from tabletop_oracle.models.enums import UserRole, UserStatus
-from tabletop_oracle.models.user import User
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
@@ -28,26 +27,34 @@ _REQUEST_ID = "test-game-endpoints"
 
 
 @pytest.fixture
-async def _seed_user(db_session: AsyncSession) -> User:
-    """Create a curator user for game creation attribution."""
-    user = User(
-        id=uuid.UUID("00000000-0000-0000-0000-000000000000"),
-        email="dev@localhost",
-        display_name="Dev Bypass",
-        role=UserRole.CURATOR,
-        status=UserStatus.ACTIVE,
-        oauth_provider="google",
-        oauth_subject_id="bypass-subject",
+async def _seed_user(db_session: AsyncSession) -> uuid.UUID:
+    """Create a curator user via raw SQL for game creation attribution.
+
+    Uses raw SQL to avoid coupling to the User ORM model's enum
+    mapping behaviour, which differs between SQLAlchemy versions.
+    """
+    user_id = uuid.UUID("00000000-0000-0000-0000-000000000000")
+    await db_session.execute(
+        text(
+            "INSERT INTO users (id, oauth_provider, oauth_subject_id, email, display_name, role) "
+            "VALUES (:id, :provider, :sub, :email, :name, :role)"
+        ),
+        {
+            "id": str(user_id),
+            "provider": "google",
+            "sub": "bypass-subject",
+            "email": "dev@localhost",
+            "name": "Dev Bypass",
+            "role": "curator",
+        },
     )
-    db_session.add(user)
-    await db_session.flush()
-    return user
+    return user_id
 
 
 @pytest.fixture
 async def api_client(
     db_session: AsyncSession,
-    _seed_user: User,
+    _seed_user: uuid.UUID,
 ) -> AsyncGenerator[AsyncClient, None]:
     """Provide an HTTP client with real DB and bypass auth enabled.
 
@@ -495,7 +502,7 @@ class TestAuthEnforcement:
     """Verify authentication and role enforcement on game endpoints."""
 
     async def test_unauthenticated_request_returns_401(
-        self, db_session: AsyncSession, _seed_user: User
+        self, db_session: AsyncSession, _seed_user: uuid.UUID
     ) -> None:
         """Request without auth returns 401."""
 

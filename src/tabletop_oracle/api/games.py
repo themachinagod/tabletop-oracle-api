@@ -97,7 +97,7 @@ async def create_game(
     response: Response,
     db: DbSession,
     user: CurrentUserDep,
-) -> DataEnvelope[GameResponse]:
+) -> DataEnvelope[object]:
     """Create a new game in the catalogue.
 
     Requires curator role. Returns the created game in the standard
@@ -136,7 +136,7 @@ async def list_games(
     tags: str | None = Query(None, description="Comma-separated tags (AND)"),
     archived: bool = Query(False, description="Include archived games"),
     sort: str = Query("name", description="Sort field, prefix with - for descending"),
-) -> ListEnvelope[GameSummaryResponse]:
+) -> ListEnvelope[object]:
     """List games with filtering, sorting, and pagination.
 
     All query parameters are optional. Returns paginated results with
@@ -193,7 +193,8 @@ async def list_games(
         for s in summaries
     ]
 
-    return ok_list(items, total_count, pagination, request)
+    items_list: list[object] = list(items)
+    return ok_list(items_list, total_count, pagination, request)
 
 
 @router.get("/tags")
@@ -201,7 +202,7 @@ async def list_tags(
     request: Request,
     db: DbSession,
     _user: CurrentUserDep,
-) -> DataEnvelope[list[TagCountResponse]]:
+) -> DataEnvelope[object]:
     """List all tags with usage counts across active games.
 
     Results are sorted by count descending, then tag name ascending.
@@ -228,7 +229,7 @@ async def get_game(
     request: Request,
     db: DbSession,
     _user: CurrentUserDep,
-) -> DataEnvelope[GameDetailResponse]:
+) -> DataEnvelope[object]:
     """Get game detail with inline expansions and aggregated counts.
 
     Returns the full game resource including all expansions (active and
@@ -300,7 +301,7 @@ async def update_game(
     body: GameUpdate,
     request: Request,
     db: DbSession,
-) -> DataEnvelope[GameResponse]:
+) -> DataEnvelope[object]:
     """Partially update a game.
 
     Only fields present in the request body are modified. Requires
@@ -334,7 +335,7 @@ async def archive_game(
     game_id: uuid.UUID,
     request: Request,
     db: DbSession,
-) -> DataEnvelope[GameResponse]:
+) -> DataEnvelope[object]:
     """Archive a game (soft delete).
 
     Sets archived_at to the current timestamp. Returns 409 if the
@@ -368,7 +369,7 @@ async def restore_game(
     game_id: uuid.UUID,
     request: Request,
     db: DbSession,
-) -> DataEnvelope[GameResponse]:
+) -> DataEnvelope[object]:
     """Restore an archived game.
 
     Clears archived_at, making the game active again. Returns 409 if
