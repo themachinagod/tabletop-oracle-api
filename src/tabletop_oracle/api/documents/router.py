@@ -1,4 +1,4 @@
-"""Document CRUD API router.
+"""Document CRUD and versioning API router.
 
 All endpoints are game-scoped under ``/games/{game_id}/documents``.
 Curator role required for all operations. Follows three-layer
@@ -23,9 +23,13 @@ from tabletop_oracle.schemas.document import (
     DocumentDetailResponse,
     DocumentExpansionUpdate,
     DocumentFilters,
+    DocumentPreviewResponse,
     DocumentResponse,
     DocumentTypeFilter,
     DocumentTypeUpdate,
+    DocumentVersionResponse,
+    PreviewSectionResponse,
+    PreviewStatsResponse,
 )
 from tabletop_oracle.services.document_service import DocumentService
 
@@ -271,3 +275,142 @@ async def delete_document(
     """
     await service.delete_document(game_id, document_id)
     return Response(status_code=204)
+
+
+@router.post(
+    "/{document_id}/versions",
+    status_code=201,
+    dependencies=[_curator_dep],
+)
+async def upload_version(
+    game_id: uuid.UUID,
+    document_id: uuid.UUID,
+    request: Request,
+    user: CurrentUserDep,
+    db: DbSession,
+    service: ServiceDep,
+    file: Annotated[UploadFile, File(...)],
+) -> DataEnvelope[Any]:
+    """Upload a new version of an existing document.
+
+    Multipart upload replacing the active document file. Previous
+    versions are retained. Format must match the original document.
+
+    Args:
+        game_id: UUID of the parent game.
+        document_id: UUID of the document.
+        request: The HTTP request.
+        user: Authenticated curator.
+        db: Database session.
+        service: Document service (injected).
+        file: The replacement file.
+
+    Returns:
+        201 with DataEnvelope containing DocumentVersionResponse.
+    """
+    version = await service.upload_version(
+        game_id=game_id,
+        document_id=document_id,
+        file=file,
+        user_id=user.user_id,
+    )
+    return ok(DocumentVersionResponse.model_validate(version), request)
+
+
+@router.get(
+    "/{document_id}/versions",
+    dependencies=[_curator_dep],
+)
+async def list_versions(
+    game_id: uuid.UUID,
+    document_id: uuid.UUID,
+    request: Request,
+    db: DbSession,
+    service: ServiceDep,
+    pagination: PaginationDep,
+) -> ListEnvelope[Any]:
+    """Get version history for a document.
+
+    Args:
+        game_id: UUID of the parent game.
+        document_id: UUID of the document.
+        request: The HTTP request.
+        db: Database session.
+        service: Document service (injected).
+        pagination: Pagination parameters.
+
+    Returns:
+        200 with ListEnvelope containing DocumentVersionResponse items.
+    """
+    versions, total = await service.get_versions(game_id, document_id, pagination)
+    items: list[object] = [DocumentVersionResponse.model_validate(v) for v in versions]
+    return ok_list(items, total, pagination, request)
+
+
+@router.post(
+    "/{document_id}/reprocess",
+    dependencies=[_curator_dep],
+)
+async def reprocess_document(
+    game_id: uuid.UUID,
+    document_id: uuid.UUID,
+    request: Request,
+    db: DbSession,
+    service: ServiceDep,
+) -> DataEnvelope[Any]:
+    """Trigger reprocessing of a document's active version.
+
+    Clears existing chunks, resets status to uploaded, and enqueues
+    processing. Returns 409 if the document is currently processing.
+
+    Args:
+        game_id: UUID of the parent game.
+        document_id: UUID of the document.
+        request: The HTTP request.
+        db: Database session.
+        service: Document service (injected).
+
+    Returns:
+        200 with DataEnvelope containing updated DocumentResponse.
+    """
+    doc = await service.reprocess(game_id, document_id)
+    return ok(DocumentResponse.model_validate(doc), request)
+
+
+@router.get(
+    "/{document_id}/preview",
+    dependencies=[_curator_dep],
+)
+async def preview_document(
+    game_id: uuid.UUID,
+    document_id: uuid.UUID,
+    request: Request,
+    db: DbSession,
+    service: ServiceDep,
+) -> DataEnvelope[Any]:
+    """Preview extracted content of a processed document.
+
+    Returns the structured content including sections, chunks, and
+    statistics. Returns 409 if the document has not been processed yet.
+
+    Args:
+        game_id: UUID of the parent game.
+        document_id: UUID of the document.
+        request: The HTTP request.
+        db: Database session.
+        service: Document service (injected).
+
+    Returns:
+        200 with DataEnvelope containing DocumentPreviewResponse.
+    """
+    preview_data = await service.get_preview(game_id, document_id)
+    sections = [PreviewSectionResponse(**s) for s in preview_data["sections"]]
+    stats = PreviewStatsResponse(**preview_data["stats"])
+    response = DocumentPreviewResponse(
+        document_id=preview_data["document_id"],
+        format=preview_data["format"],
+        sections=sections,
+        chunks=preview_data["chunks"],
+        stats=stats,
+    )
+    return ok(response, request)

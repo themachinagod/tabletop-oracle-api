@@ -2,8 +2,8 @@
 
 Provides CRUD operations scoped to a parent game, dynamic filtering by
 status/type/expansion/archived status, sorting, pagination with total
-count, and aggregation queries for detail views. All queries enforce
-game silo isolation.
+count, aggregation queries for detail views, version management, and
+chunk operations. All queries enforce game silo isolation.
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import Select, func, select
+from sqlalchemy import CursorResult, Select, delete, func, select, update
 
 from tabletop_oracle.models.document import Document, DocumentChunk, DocumentVersion
 from tabletop_oracle.models.enums import DocumentStatus, DocumentType
@@ -176,6 +176,99 @@ class DocumentRepository:
         self._session.add(version)
         await self._session.flush()
         return version
+
+    async def list_versions(
+        self,
+        document_id: uuid.UUID,
+        pagination: PaginationParams,
+    ) -> tuple[list[DocumentVersion], int]:
+        """List versions for a document with pagination.
+
+        Args:
+            document_id: UUID of the parent document.
+            pagination: Page number and page size.
+
+        Returns:
+            Tuple of (list of DocumentVersion entities, total count).
+        """
+        base_query = select(DocumentVersion).where(
+            DocumentVersion.document_id == document_id,
+        )
+        total = await self._count(base_query)
+
+        query = base_query.order_by(DocumentVersion.version_number.desc())
+        query = query.offset(pagination.offset).limit(pagination.page_size)
+
+        result = await self._session.execute(query)
+        versions = list(result.scalars().all())
+        return versions, total
+
+    async def deactivate_versions(self, document_id: uuid.UUID) -> None:
+        """Set is_active=False for all versions of a document.
+
+        Args:
+            document_id: UUID of the parent document.
+        """
+        stmt = (
+            update(DocumentVersion)
+            .where(DocumentVersion.document_id == document_id)
+            .values(is_active=False)
+        )
+        await self._session.execute(stmt)
+
+    async def get_active_version(
+        self,
+        document_id: uuid.UUID,
+    ) -> DocumentVersion | None:
+        """Fetch the active version for a document.
+
+        Args:
+            document_id: UUID of the parent document.
+
+        Returns:
+            The active DocumentVersion, or None if none found.
+        """
+        stmt = select(DocumentVersion).where(
+            DocumentVersion.document_id == document_id,
+            DocumentVersion.is_active.is_(True),
+        )
+        result = await self._session.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def delete_chunks_for_document(self, document_id: uuid.UUID) -> int:
+        """Delete all chunks for a document.
+
+        Args:
+            document_id: UUID of the document.
+
+        Returns:
+            Number of chunks deleted.
+        """
+        stmt = delete(DocumentChunk).where(
+            DocumentChunk.document_id == document_id,
+        )
+        result: CursorResult[tuple[()]] = await self._session.execute(stmt)  # type: ignore[assignment]
+        return result.rowcount
+
+    async def get_chunks_for_preview(
+        self,
+        document_id: uuid.UUID,
+    ) -> list[DocumentChunk]:
+        """Fetch all chunks for a document ordered by chunk_index.
+
+        Args:
+            document_id: UUID of the document.
+
+        Returns:
+            List of DocumentChunk entities.
+        """
+        stmt = (
+            select(DocumentChunk)
+            .where(DocumentChunk.document_id == document_id)
+            .order_by(DocumentChunk.chunk_index)
+        )
+        result = await self._session.execute(stmt)
+        return list(result.scalars().all())
 
     async def _count(self, query: Select[Any]) -> int:
         """Execute a COUNT query derived from the given SELECT.

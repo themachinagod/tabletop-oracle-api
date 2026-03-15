@@ -1,9 +1,9 @@
 """Pydantic schemas for Document resources.
 
 Covers request schemas (upload metadata, type update, expansion update),
-response schemas (single, detail with aggregated counts), and filter/query
-schemas. All field constraints and types match the design doc (EPIC-002)
-and F001 conventions.
+response schemas (single, detail with aggregated counts, version history,
+preview), and filter/query schemas. All field constraints and types match
+the design doc (EPIC-002) and F001 conventions.
 """
 
 from __future__ import annotations
@@ -139,6 +139,90 @@ class DocumentDetailResponse(DocumentResponse):
 
     chunk_count: int
     version_count: int
+
+
+class DocumentVersionResponse(BaseModel):
+    """Response schema for a document version.
+
+    Attributes:
+        id: Version UUID.
+        document_id: UUID of the parent document.
+        version_number: Sequential version number.
+        file_size: File size in bytes.
+        is_active: Whether this is the active version.
+        uploaded_at: When this version was uploaded.
+        processed_at: When processing completed (null if not processed).
+        uploaded_by: UUID of the user who uploaded this version.
+    """
+
+    id: uuid.UUID
+    document_id: uuid.UUID
+    version_number: int
+    file_size: int
+    is_active: bool
+    uploaded_at: datetime
+    processed_at: datetime | None
+    uploaded_by: uuid.UUID
+
+    model_config = {"from_attributes": True}
+
+
+class PreviewSectionResponse(BaseModel):
+    """A section in the document preview.
+
+    Attributes:
+        title: Section heading text.
+        level: Heading level (1 = top-level).
+        content: Plain text content of this section.
+        page_number: Source page number (null for non-PDF).
+        children: Nested sub-sections.
+    """
+
+    title: str
+    level: int
+    content: str
+    page_number: int | None
+    children: list[PreviewSectionResponse] = []
+
+    model_config = {"from_attributes": True}
+
+
+# Rebuild model to resolve forward reference for recursive type.
+PreviewSectionResponse.model_rebuild()
+
+
+class PreviewStatsResponse(BaseModel):
+    """Aggregate statistics for the document preview.
+
+    Attributes:
+        total_chunks: Number of content chunks.
+        total_characters: Total character count.
+        estimated_tokens: Approximate token count.
+    """
+
+    total_chunks: int
+    total_characters: int
+    estimated_tokens: int
+
+
+class DocumentPreviewResponse(BaseModel):
+    """Response schema for previewing extracted document content.
+
+    Returns structured content after processing (AC-408).
+
+    Attributes:
+        document_id: UUID of the document.
+        format: File format of the document.
+        sections: Hierarchical section structure.
+        chunks: Flat list of chunk content for preview.
+        stats: Aggregate statistics.
+    """
+
+    document_id: uuid.UUID
+    format: DocumentFormatFilter
+    sections: list[PreviewSectionResponse]
+    chunks: list[dict[str, Any]]
+    stats: PreviewStatsResponse
 
 
 # ---------------------------------------------------------------------------
