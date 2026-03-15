@@ -4,6 +4,11 @@ Contains concept extraction, association discovery, embedding, retrieval,
 and supporting infrastructure for the KG pipeline (EPIC-003).
 """
 
+from tabletop_oracle.services.kg.associations import (
+    AssociationDiscoveryService,
+    ConceptSummary,
+    DiscoveredAssociation,
+)
 from tabletop_oracle.services.kg.extraction import (
     ConceptExtractionService,
     ExtractedConcept,
@@ -11,7 +16,10 @@ from tabletop_oracle.services.kg.extraction import (
 )
 
 __all__ = [
+    "AssociationDiscoveryService",
     "ConceptExtractionService",
+    "ConceptSummary",
+    "DiscoveredAssociation",
     "ExtractedConcept",
     "GameContext",
 ]
