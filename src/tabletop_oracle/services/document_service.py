@@ -14,6 +14,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from tabletop_oracle.errors.exceptions import (
+    ConflictError,
     ContentTooLargeError,
     NotFoundError,
     UnprocessableEntityError,
@@ -358,6 +359,283 @@ class DocumentService:
             document_id,
             game_id,
         )
+
+    async def upload_version(
+        self,
+        game_id: uuid.UUID,
+        document_id: uuid.UUID,
+        file: UploadFile,
+        user_id: uuid.UUID,
+    ) -> DocumentVersion:
+        """Upload a new version of an existing document.
+
+        Deactivates previous versions, creates a new active version,
+        increments the document's current_version, resets status to
+        uploaded, and enqueues processing.
+
+        Args:
+            game_id: UUID of the parent game.
+            document_id: UUID of the document.
+            file: The replacement file upload.
+            user_id: UUID of the authenticated curator.
+
+        Returns:
+            The created DocumentVersion entity.
+
+        Raises:
+            NotFoundError: If the document does not exist or wrong game.
+            ContentTooLargeError: If the file exceeds 50 MB.
+            ValidationError: If file is empty or format does not match.
+        """
+        doc = await self.get_document(game_id, document_id)
+
+        file_data = await file.read()
+        file_size = len(file_data)
+
+        if file_size > MAX_FILE_SIZE:
+            raise ContentTooLargeError(
+                f"File size {file_size} bytes exceeds maximum of {MAX_FILE_SIZE} bytes (50 MB)"
+            )
+
+        if file_size == 0:
+            raise ValidationError("Uploaded file is empty")
+
+        filename = file.filename or "unnamed"
+        doc_format = _detect_format(filename, file.content_type)
+        if doc_format is None:
+            raise ValidationError(
+                f"Unsupported file format. Supported: pdf, md, txt, html, docx. "
+                f"Got filename: {filename}"
+            )
+
+        if doc_format != doc.format:
+            raise ValidationError(
+                f"New version format '{doc_format.value}' does not match "
+                f"original document format '{doc.format.value}'"
+            )
+
+        new_version_number = doc.current_version + 1
+        storage_path = f"documents/{game_id}/{document_id}/v{new_version_number}/{filename}"
+
+        content_type = (
+            file.content_type or mimetypes.guess_type(filename)[0] or "application/octet-stream"
+        )
+        await self._blob_store.store(storage_path, file_data, content_type)
+
+        # Deactivate all existing versions
+        await self._document_repo.deactivate_versions(document_id)
+
+        # Create new version
+        version = DocumentVersion(
+            document_id=document_id,
+            version_number=new_version_number,
+            file_path=storage_path,
+            file_size=file_size,
+            is_active=True,
+            uploaded_by=user_id,
+        )
+        version = await self._document_repo.create_version(version)
+
+        # Update document metadata
+        doc.current_version = new_version_number
+        doc.file_path = storage_path
+        doc.file_size = file_size
+        doc.status = DocumentStatus.UPLOADED
+        doc.processed_at = None
+        doc.error_message = None
+        await self._document_repo.update(doc)
+
+        # Stub: enqueue processing task (actual Celery integration is #31)
+        logger.info(
+            "Processing enqueue stub: document_id=%s, version=%d",
+            document_id,
+            new_version_number,
+        )
+
+        return version
+
+    async def get_versions(
+        self,
+        game_id: uuid.UUID,
+        document_id: uuid.UUID,
+        pagination: PaginationParams,
+    ) -> tuple[list[DocumentVersion], int]:
+        """List version history for a document.
+
+        Args:
+            game_id: UUID of the parent game (silo boundary).
+            document_id: UUID of the document.
+            pagination: Page number and page size.
+
+        Returns:
+            Tuple of (list of DocumentVersion entities, total count).
+
+        Raises:
+            NotFoundError: If the document does not exist or wrong game.
+        """
+        await self.get_document(game_id, document_id)
+        return await self._document_repo.list_versions(document_id, pagination)
+
+    async def reprocess(
+        self,
+        game_id: uuid.UUID,
+        document_id: uuid.UUID,
+    ) -> Document:
+        """Trigger reprocessing of a document's active version.
+
+        Clears existing chunks, resets status to uploaded, and enqueues
+        the active version for processing.
+
+        Args:
+            game_id: UUID of the parent game.
+            document_id: UUID of the document.
+
+        Returns:
+            The updated Document entity with reset status.
+
+        Raises:
+            NotFoundError: If the document does not exist or wrong game.
+            ConflictError: If the document is currently processing.
+        """
+        doc = await self.get_document(game_id, document_id)
+
+        if doc.status == DocumentStatus.PARSING:
+            raise ConflictError(
+                "Document is currently processing. Wait for processing to complete."
+            )
+
+        # Clear existing chunks
+        deleted_count = await self._document_repo.delete_chunks_for_document(document_id)
+        logger.info(
+            "Reprocess: cleared %d chunks for document_id=%s",
+            deleted_count,
+            document_id,
+        )
+
+        # Reset status
+        doc.status = DocumentStatus.UPLOADED
+        doc.processed_at = None
+        doc.error_message = None
+        doc = await self._document_repo.update(doc)
+
+        # Stub: enqueue processing task (actual Celery integration is #31)
+        logger.info(
+            "Processing enqueue stub (reprocess): document_id=%s, version=%d",
+            document_id,
+            doc.current_version,
+        )
+
+        return doc
+
+    async def get_preview(
+        self,
+        game_id: uuid.UUID,
+        document_id: uuid.UUID,
+    ) -> dict[str, Any]:
+        """Return extracted content and structure for preview.
+
+        Retrieves all chunks for the document and constructs a preview
+        with section structure and statistics.
+
+        Args:
+            game_id: UUID of the parent game.
+            document_id: UUID of the document.
+
+        Returns:
+            Dict with document_id, format, sections, chunks, and stats.
+
+        Raises:
+            NotFoundError: If the document does not exist or wrong game.
+            ConflictError: If the document has not been processed yet.
+        """
+        doc = await self.get_document(game_id, document_id)
+
+        if doc.status != DocumentStatus.PROCESSED:
+            raise ConflictError(
+                f"Document has not been processed yet. Current status: '{doc.status.value}'"
+            )
+
+        chunks = await self._document_repo.get_chunks_for_preview(document_id)
+
+        # Build section tree from chunks
+        sections = self._build_section_tree(chunks)
+
+        # Build chunk summaries for flat preview
+        chunk_data = [
+            {
+                "chunk_index": c.chunk_index,
+                "chunk_type": c.chunk_type,
+                "content": c.content,
+                "section_path": c.section_path,
+                "heading": c.heading,
+                "page_number": c.page_number,
+                "token_estimate": c.token_estimate,
+            }
+            for c in chunks
+        ]
+
+        total_characters = sum(len(c.content) for c in chunks)
+        total_tokens = sum(c.token_estimate for c in chunks)
+
+        return {
+            "document_id": document_id,
+            "format": doc.format.value,
+            "sections": sections,
+            "chunks": chunk_data,
+            "stats": {
+                "total_chunks": len(chunks),
+                "total_characters": total_characters,
+                "estimated_tokens": total_tokens,
+            },
+        }
+
+    @staticmethod
+    def _build_section_tree(
+        chunks: list[Any],
+    ) -> list[dict[str, Any]]:
+        """Build a hierarchical section tree from flat chunks.
+
+        Groups chunks by heading to reconstruct the document's
+        section hierarchy for preview display.
+
+        Args:
+            chunks: Ordered list of DocumentChunk entities.
+
+        Returns:
+            List of section dicts with title, level, content, children.
+        """
+        sections: list[dict[str, Any]] = []
+        seen_headings: set[str] = set()
+
+        for chunk in chunks:
+            heading = chunk.heading or ""
+            if heading and heading not in seen_headings:
+                seen_headings.add(heading)
+                sections.append(
+                    {
+                        "title": heading,
+                        "level": 1,
+                        "content": chunk.content,
+                        "page_number": chunk.page_number,
+                        "children": [],
+                    }
+                )
+            elif sections:
+                # Append content to the last section
+                sections[-1]["content"] += "\n" + chunk.content
+            else:
+                # No heading yet, create untitled root section
+                sections.append(
+                    {
+                        "title": "",
+                        "level": 1,
+                        "content": chunk.content,
+                        "page_number": chunk.page_number,
+                        "children": [],
+                    }
+                )
+
+        return sections
 
     async def _validate_game_exists(self, game_id: uuid.UUID) -> None:
         """Verify that the parent game exists.
