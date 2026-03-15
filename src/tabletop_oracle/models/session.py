@@ -59,7 +59,12 @@ class Session(MappedBase):
     name: Mapped[str] = mapped_column(Text, nullable=False)
     player_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     status: Mapped[SessionStatus] = mapped_column(
-        Enum(SessionStatus, native_enum=True, name="session_status"),
+        Enum(
+            SessionStatus,
+            native_enum=True,
+            name="session_status",
+            values_callable=lambda e: [m.value for m in e],
+        ),
         nullable=False,
         server_default="active",
     )

@@ -53,7 +53,12 @@ class Message(MappedBase):
         nullable=False,
     )
     type: Mapped[MessageType] = mapped_column(
-        Enum(MessageType, native_enum=True, name="message_type"),
+        Enum(
+            MessageType,
+            native_enum=True,
+            name="message_type",
+            values_callable=lambda e: [m.value for m in e],
+        ),
         nullable=False,
     )
     content: Mapped[str] = mapped_column(Text, nullable=False)
@@ -119,7 +124,12 @@ class Citation(MappedBase):
     )
     document_name: Mapped[str] = mapped_column(Text, nullable=False)
     document_type: Mapped[DocumentType] = mapped_column(
-        Enum(DocumentType, native_enum=True, name="document_type"),
+        Enum(
+            DocumentType,
+            native_enum=True,
+            name="document_type",
+            values_callable=lambda e: [m.value for m in e],
+        ),
         nullable=False,
     )
     section_path: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -157,7 +167,12 @@ class ContextAttachment(MappedBase):
         nullable=False,
     )
     type: Mapped[ContextAttachmentType] = mapped_column(
-        Enum(ContextAttachmentType, native_enum=True, name="context_attachment_type"),
+        Enum(
+            ContextAttachmentType,
+            native_enum=True,
+            name="context_attachment_type",
+            values_callable=lambda e: [m.value for m in e],
+        ),
         nullable=False,
     )
     content: Mapped[str | None] = mapped_column(Text, nullable=True)

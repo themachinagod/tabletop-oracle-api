@@ -56,7 +56,12 @@ class Game(Base):
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     cover_image_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     complexity: Mapped[GameComplexity | None] = mapped_column(
-        Enum(GameComplexity, native_enum=True, name="game_complexity"),
+        Enum(
+            GameComplexity,
+            native_enum=True,
+            name="game_complexity",
+            values_callable=lambda e: [m.value for m in e],
+        ),
         nullable=True,
     )
     archived_at: Mapped[datetime | None] = mapped_column(

@@ -294,8 +294,5 @@ class GameService:
         if complexity is None:
             return None
 
-        if hasattr(complexity, "value"):
-            return GameComplexity(complexity.value)
-        if isinstance(complexity, str):
-            return GameComplexity(complexity)
-        return complexity  # type: ignore[return-value]
+        value = complexity.value if hasattr(complexity, "value") else str(complexity)
+        return GameComplexity(value)

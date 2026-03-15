@@ -41,7 +41,12 @@ class ModelSlot(MappedBase):
         server_default=text("gen_random_uuid()"),
     )
     capability: Mapped[ModelCapability] = mapped_column(
-        Enum(ModelCapability, native_enum=True, name="model_capability"),
+        Enum(
+            ModelCapability,
+            native_enum=True,
+            name="model_capability",
+            values_callable=lambda e: [m.value for m in e],
+        ),
         unique=True,
         nullable=False,
     )
@@ -86,7 +91,12 @@ class TokenUsageLog(MappedBase):
         server_default=text("gen_random_uuid()"),
     )
     capability: Mapped[ModelCapability] = mapped_column(
-        Enum(ModelCapability, native_enum=True, name="model_capability"),
+        Enum(
+            ModelCapability,
+            native_enum=True,
+            name="model_capability",
+            values_callable=lambda e: [m.value for m in e],
+        ),
         nullable=False,
     )
     provider: Mapped[str] = mapped_column(Text, nullable=False)
