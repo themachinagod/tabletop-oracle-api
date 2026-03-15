@@ -137,14 +137,14 @@ class TestStructureDetectionStage:
 
 
 class TestChunkingStage:
-    """Tests for ChunkingStage (stub)."""
+    """Tests for ChunkingStage with pluggable strategy."""
 
     def test_name(self) -> None:
         """Stage has the expected name."""
         assert ChunkingStage().name == "chunking"
 
     def test_execute_produces_chunks(self) -> None:
-        """Chunking stub produces one chunk per section."""
+        """Chunking produces chunks from sections via strategy."""
         ctx = _make_context()
         ctx.structure_result = StructureResult(
             sections=[
@@ -153,26 +153,43 @@ class TestChunkingStage:
             ],
         )
         ChunkingStage().execute(ctx)
-        assert len(ctx.chunks) == 2
+        assert len(ctx.chunks) >= 1
         assert ctx.chunks[0].chunk_index == 0
-        assert ctx.chunks[1].chunk_index == 1
-        assert ctx.chunks[0].section_path == "Combat"
-        assert ctx.chunks[1].section_path == "Magic"
+        # Sections may be merged if undersized — verify at least one has content
+        assert any("Combat" in c.section_path for c in ctx.chunks if c.section_path)
 
     def test_execute_chunk_has_token_estimate(self) -> None:
-        """Chunking stub calculates token estimate based on word count."""
+        """Chunking calculates token estimate via tiktoken."""
         ctx = _make_context()
         ctx.structure_result = StructureResult(
             sections=[Section(title="Test", level=1, content="one two three")],
         )
         ChunkingStage().execute(ctx)
-        assert ctx.chunks[0].token_estimate == 3
+        assert ctx.chunks[0].token_estimate > 0
 
     def test_execute_no_structure_result_raises(self) -> None:
         """Chunking fails when structure_result is not set."""
         ctx = _make_context()
         with pytest.raises(RuntimeError, match="structure_result is not set"):
             ChunkingStage().execute(ctx)
+
+    def test_execute_uses_custom_strategy(self) -> None:
+        """Chunking delegates to the injected strategy."""
+        from tabletop_oracle.services.ingestion.models import Chunk, Table
+
+        class FixedStrategy:
+            """Always returns one fixed chunk."""
+
+            def chunk(self, sections: list[Section], tables: list[Table]) -> list[Chunk]:
+                return [Chunk(chunk_index=0, chunk_type="text", content="fixed")]
+
+        ctx = _make_context()
+        ctx.structure_result = StructureResult(
+            sections=[Section(title="X", level=1, content="ignored")],
+        )
+        ChunkingStage(strategy=FixedStrategy()).execute(ctx)
+        assert len(ctx.chunks) == 1
+        assert ctx.chunks[0].content == "fixed"
 
 
 class TestKGHandoffStage:

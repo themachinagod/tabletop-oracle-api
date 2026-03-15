@@ -12,8 +12,11 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from tabletop_oracle.services.ingestion.chunking import (
+    ChunkingStrategy,
+    SectionAwareChunkingStrategy,
+)
 from tabletop_oracle.services.ingestion.models import (
-    Chunk,
     StructureResult,
 )
 from tabletop_oracle.services.ingestion.parsers.registry import (
@@ -179,16 +182,23 @@ class StructureDetectionStage(PipelineStageBase):
 class ChunkingStage(PipelineStageBase):
     """Breaks structured content into traceable chunks.
 
-    Stub implementation — produces one chunk per section. Real chunking
-    strategies (semantic, size-based, overlap) are task #33.
+    Delegates to a pluggable ``ChunkingStrategy``. Defaults to
+    ``SectionAwareChunkingStrategy`` with standard size parameters.
+
+    Args:
+        strategy: Chunking strategy to use. Defaults to
+            ``SectionAwareChunkingStrategy()``.
     """
+
+    def __init__(self, strategy: ChunkingStrategy | None = None) -> None:
+        self._strategy: ChunkingStrategy = strategy or SectionAwareChunkingStrategy()
 
     @property
     def name(self) -> str:
         return "chunking"
 
     def execute(self, context: PipelineContext) -> None:
-        """Chunk the structured content.
+        """Chunk the structured content using the configured strategy.
 
         Args:
             context: Pipeline context with structure_result set.
@@ -202,28 +212,16 @@ class ChunkingStage(PipelineStageBase):
             raise RuntimeError(msg)
 
         logger.info(
-            "Chunking stub: sections=%d",
+            "Chunking: sections=%d, tables=%d, strategy=%s",
             len(context.structure_result.sections),
+            len(context.structure_result.tables),
+            type(self._strategy).__name__,
         )
 
-        # Stub: produce one chunk per section
-        chunks: list[Chunk] = []
-        for idx, section in enumerate(context.structure_result.sections):
-            content = section.content or section.title
-            chunks.append(
-                Chunk(
-                    chunk_index=idx,
-                    chunk_type="text",
-                    content=content,
-                    section_path=section.title,
-                    heading=section.title,
-                    page_number=section.page_number,
-                    token_estimate=len(content.split()),
-                    metadata={"stub": True},
-                )
-            )
-
-        context.chunks = chunks
+        context.chunks = self._strategy.chunk(
+            context.structure_result.sections,
+            context.structure_result.tables,
+        )
 
 
 class KGHandoffStage(PipelineStageBase):
