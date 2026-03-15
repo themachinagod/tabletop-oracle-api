@@ -1,8 +1,8 @@
 """Message, Citation, and ContextAttachment ORM models.
 
 Maps to the ``messages``, ``citations``, and ``context_attachments`` tables.
-Messages have ``created_at`` but no ``updated_at``. Citations and
-ContextAttachments have no timestamp columns at all.
+Messages have ``created_at`` and ``cancelled_at`` but no ``updated_at``.
+Citations and ContextAttachments have no timestamp columns at all.
 """
 
 from __future__ import annotations
@@ -28,8 +28,8 @@ if TYPE_CHECKING:
 class Message(MappedBase):
     """Chat message within a game session.
 
-    Has ``created_at`` but no ``updated_at`` (messages are immutable after
-    creation). Supports self-referential threading via ``in_reply_to_id``.
+    Has ``created_at`` and ``cancelled_at`` but no ``updated_at``.
+    Supports self-referential threading via ``in_reply_to_id``.
 
     Attributes:
         session_id: FK to the owning session.
@@ -40,6 +40,7 @@ class Message(MappedBase):
         confidence_score: AI confidence in the answer, 0.0-1.0 (optional).
         processing_duration_ms: Time to generate the response in ms (optional).
         created_at: Message creation timestamp.
+        cancelled_at: Cancellation timestamp, NULL if not cancelled.
     """
 
     __tablename__ = "messages"
@@ -73,6 +74,10 @@ class Message(MappedBase):
         TIMESTAMP(timezone=True),
         server_default=func.now(),
         nullable=False,
+    )
+    cancelled_at: Mapped[datetime | None] = mapped_column(
+        TIMESTAMP(timezone=True),
+        nullable=True,
     )
 
     # Relationships
