@@ -1,8 +1,14 @@
 """Tests for ingestion pipeline stage implementations."""
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
 from uuid import uuid4
 
 import pytest
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 from tabletop_oracle.services.ingestion.models import (
     ParseResult,
@@ -71,27 +77,37 @@ class TestValidationStage:
 
 
 class TestExtractionStage:
-    """Tests for ExtractionStage (stub)."""
+    """Tests for ExtractionStage — dispatches to format-specific parsers."""
 
     def test_name(self) -> None:
         """Stage has the expected name."""
         assert ExtractionStage().name == "extraction"
 
-    def test_execute_sets_parse_result(self) -> None:
-        """Extraction stub populates context.parse_result."""
-        ctx = _make_context()
+    def test_execute_sets_parse_result(self, tmp_path: Path) -> None:
+        """Extraction populates context.parse_result with real file."""
+        text_file = tmp_path / "rules.txt"
+        text_file.write_text("Some rules content here.")
+        ctx = _make_context(file_path=str(text_file), document_format="text")
         ExtractionStage().execute(ctx)
         assert ctx.parse_result is not None
         assert isinstance(ctx.parse_result, ParseResult)
         assert ctx.parse_result.raw_text != ""
         assert len(ctx.parse_result.sections) > 0
 
-    def test_execute_preserves_format_in_metadata(self) -> None:
-        """Extraction stub includes document format in metadata."""
-        ctx = _make_context(document_format="markdown")
+    def test_execute_preserves_format_in_metadata(self, tmp_path: Path) -> None:
+        """Extraction includes document format in metadata."""
+        md_file = tmp_path / "rules.md"
+        md_file.write_text("# Rules\n\nContent.\n")
+        ctx = _make_context(file_path=str(md_file), document_format="markdown")
         ExtractionStage().execute(ctx)
         assert ctx.parse_result is not None
         assert ctx.parse_result.metadata.get("format") == "markdown"
+
+    def test_execute_unknown_format_raises(self) -> None:
+        """Extraction raises RuntimeError for unsupported formats."""
+        ctx = _make_context(document_format="xyz_unknown")
+        with pytest.raises(RuntimeError, match="No parser available"):
+            ExtractionStage().execute(ctx)
 
 
 class TestStructureDetectionStage:
