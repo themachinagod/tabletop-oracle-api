@@ -74,13 +74,6 @@ class TestApplyFilters:
 class TestGameSiloIsolation:
     """Tests verifying game_id scoping as a security boundary."""
 
-    def test_get_by_id_scopes_to_game_id(self, repo: ExpansionRepository) -> None:
-        """get_by_id query includes both expansion_id and game_id in WHERE."""
-        # We can't easily inspect the SQL from get_by_id without executing,
-        # so we verify via the mock that execute is called with a statement
-        # containing both IDs. This is tested functionally below.
-        pass
-
     @pytest.mark.asyncio
     async def test_get_by_id_returns_none_for_wrong_game(
         self,
