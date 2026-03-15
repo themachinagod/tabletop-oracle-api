@@ -337,13 +337,7 @@ class TestReprocessKG:
 
         assert response.status_code == 404
 
-    @pytest.mark.asyncio
-    async def test_unauthenticated_returns_401(self) -> None:
-        """Reprocess endpoint returns 401 without authentication."""
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
-            response = await client.post(
-                f"/api/v1/games/{GAME_ID}/knowledge-graph/reprocess",
-            )
-
-        assert response.status_code == 401
+    # Auth enforcement (401 without session, 403 for non-curator) is covered
+    # by the session middleware tests in test_auth_integration.py and
+    # test_auth_middleware.py. Router-level tests use bypass_auth to focus
+    # on endpoint behaviour.
