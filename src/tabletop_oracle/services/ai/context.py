@@ -100,7 +100,8 @@ class PipelineContext:
         knowledge_insufficient: True when KG retrieval returned zero results.
         answer_text: Generated answer text.
         citations: Assembled citation records.
-        confidence_score: Self-assessed confidence value.
+        confidence_score: Self-assessed confidence value (0.0-1.0).
+        confidence_label: Human-readable label (High, Moderate, Low).
         token_usage: Running total of tokens consumed in this query.
         model_call_count: Number of model calls made in this query.
     """
@@ -137,6 +138,7 @@ class PipelineContext:
 
     # Populated by ConfidenceScoreStage
     confidence_score: float | None = None
+    confidence_label: str | None = None
 
     # Running counters (checked by guardrails)
     token_usage: int = 0
