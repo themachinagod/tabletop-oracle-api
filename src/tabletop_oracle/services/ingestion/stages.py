@@ -1,21 +1,24 @@
-"""Pipeline stage interfaces and stub implementations.
+"""Pipeline stage interfaces and implementations.
 
 Each stage implements a common protocol: receive a PipelineContext, perform
-work, mutate the context with results. Stub implementations provide the
-interface contract for real implementations in downstream tasks (#32, #33, #34).
+work, mutate the context with results. The ExtractionStage dispatches to
+format-specific parsers via the ParserRegistry.
 """
 
 from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from tabletop_oracle.services.ingestion.models import (
     Chunk,
-    ParseResult,
-    Section,
     StructureResult,
+)
+from tabletop_oracle.services.ingestion.parsers.registry import (
+    ParserRegistry,
+    create_default_registry,
 )
 
 if TYPE_CHECKING:
@@ -91,38 +94,50 @@ class ValidationStage(PipelineStageBase):
 class ExtractionStage(PipelineStageBase):
     """Extracts text and structure from the document file.
 
-    Stub implementation — produces a minimal ParseResult. Real format-specific
-    parsers (PDF, Markdown, HTML, DOCX, text) are task #32.
+    Dispatches to format-specific parsers via the ParserRegistry.
+    Each parser produces a standardised ParseResult.
+
+    Args:
+        registry: Parser registry to use for format lookup. Defaults to
+            the built-in registry with all five parsers.
     """
+
+    def __init__(self, registry: ParserRegistry | None = None) -> None:
+        self._registry = registry or create_default_registry()
 
     @property
     def name(self) -> str:
         return "extraction"
 
     def execute(self, context: PipelineContext) -> None:
-        """Extract content from the document.
+        """Extract content from the document using a format-specific parser.
+
+        Looks up the parser for ``context.document_format`` and delegates
+        parsing to it. Raises RuntimeError if no parser supports the format.
 
         Args:
             context: Pipeline context with file_path and document_format.
                 Sets context.parse_result on success.
+
+        Raises:
+            RuntimeError: If no parser supports the document format.
         """
+        parser = self._registry.get_parser(context.document_format)
+        if parser is None:
+            msg = f"No parser available for format: {context.document_format}"
+            raise RuntimeError(msg)
+
         logger.info(
-            "Extraction stub: format=%s, path=%s",
+            "Extracting document: format=%s, parser=%s, path=%s",
             context.document_format,
+            type(parser).__name__,
             context.file_path,
         )
-        # Stub: produce a placeholder parse result.
-        # Real implementations (#32) will dispatch to format-specific parsers.
-        context.parse_result = ParseResult(
-            raw_text="[stub] Extracted text placeholder",
-            sections=[
-                Section(
-                    title="Document Content",
-                    level=1,
-                    content="[stub] Content placeholder for extraction stage",
-                ),
-            ],
-            metadata={"stub": True, "format": context.document_format},
+
+        file_path = Path(context.file_path)
+        context.parse_result = parser.parse(
+            file_path,
+            metadata={"format": context.document_format},
         )
 
 
