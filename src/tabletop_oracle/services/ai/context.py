@@ -92,6 +92,8 @@ class PipelineContext:
         ad_hoc_image_descriptions: Processed image descriptions.
         intent: Parsed intent from analysis.
         is_ambiguous: Whether the question requires clarification.
+        ambiguity_reason: Why the question is ambiguous (if applicable).
+        suggested_clarification: Draft clarification question from intent analysis.
         clarification_round: Current clarification round (0, 1, or 2).
         retrieval_results: Knowledge retrieved from KG.
         traversal_results: Association traversal results.
@@ -118,6 +120,8 @@ class PipelineContext:
     # Populated by IntentAnalysisStage
     intent: str | None = None
     is_ambiguous: bool = False
+    ambiguity_reason: str | None = None
+    suggested_clarification: str | None = None
     clarification_round: int = 0
 
     # Populated by KnowledgeRetrievalStage
