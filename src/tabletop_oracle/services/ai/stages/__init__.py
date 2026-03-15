@@ -1,5 +1,8 @@
 """Pipeline stage definitions for the AI query pipeline."""
 
+from tabletop_oracle.services.ai.stages.citation_assembly import (
+    CitationAssemblyStage,
+)
 from tabletop_oracle.services.ai.stages.clarification import (
     ClarificationStage,
 )
@@ -17,6 +20,7 @@ from tabletop_oracle.services.ai.stages.knowledge_retrieval import (
 )
 
 __all__ = [
+    "CitationAssemblyStage",
     "ClarificationStage",
     "ConfidenceScoreStage",
     "ContextPreparationStage",
