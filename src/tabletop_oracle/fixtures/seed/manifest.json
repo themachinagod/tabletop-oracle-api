@@ -1,0 +1,39 @@
+{
+  "version": "1.0.0",
+  "description": "Seed data for Tabletop Oracle - Catan pilot game",
+  "steps": [
+    {
+      "step": 1,
+      "type": "users",
+      "files": ["users/curator.json", "users/player.json"]
+    },
+    {
+      "step": 2,
+      "type": "game",
+      "files": ["games/catan/game.json"]
+    },
+    {
+      "step": 3,
+      "type": "expansions",
+      "files": ["games/catan/expansions/seafarers.json"],
+      "parent_game": "Catan"
+    },
+    {
+      "step": 4,
+      "type": "documents",
+      "files": [
+        "games/catan/documents/catan-base-rules.meta.json",
+        "games/catan/documents/catan-seafarers-rules.meta.json"
+      ],
+      "parent_game": "Catan"
+    },
+    {
+      "step": 5,
+      "type": "ai-config",
+      "files": [
+        "ai-config/model-slots.json",
+        "ai-config/guardrails.json"
+      ]
+    }
+  ]
+}
