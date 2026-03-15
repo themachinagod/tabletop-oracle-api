@@ -27,9 +27,12 @@ from tabletop_oracle.services.ingestion.stages import (
 
 def _make_context(**overrides: object) -> PipelineContext:
     """Build a PipelineContext with sensible defaults."""
-    defaults = {
+    defaults: dict[str, object] = {
         "document_id": uuid4(),
         "version_id": uuid4(),
+        "game_id": uuid4(),
+        "document_type": "core_rules",
+        "expansion_id": None,
         "file_path": "documents/game1/doc1/v1/rules.pdf",
         "document_format": "pdf",
         "file_size": 1024,

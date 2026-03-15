@@ -95,12 +95,20 @@ class ChunkProducingStage(PipelineStageBase):
 def _make_mock_document(
     doc_id: UUID,
     format_val: DocumentFormat = DocumentFormat.PDF,
+    *,
+    game_id: UUID | None = None,
+    expansion_id: UUID | None = None,
 ) -> MagicMock:
     """Create a mock Document ORM object."""
+    from tabletop_oracle.models.enums import DocumentType
+
     doc = MagicMock()
     doc.id = doc_id
     doc.format = format_val
+    doc.type = DocumentType.CORE_RULES
     doc.status = DocumentStatus.UPLOADED
+    doc.game_id = game_id or uuid4()
+    doc.expansion_id = expansion_id
     return doc
 
 

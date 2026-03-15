@@ -711,6 +711,9 @@ class TestExtractionStageIntegration:
         context = PipelineContext(
             document_id=uuid4(),
             version_id=uuid4(),
+            game_id=uuid4(),
+            document_type="core_rules",
+            expansion_id=None,
             file_path=str(text_file),
             document_format="text",
             file_size=20,
@@ -735,6 +738,9 @@ class TestExtractionStageIntegration:
         context = PipelineContext(
             document_id=uuid4(),
             version_id=uuid4(),
+            game_id=uuid4(),
+            document_type="core_rules",
+            expansion_id=None,
             file_path=str(md_file),
             document_format="markdown",
             file_size=25,
@@ -756,6 +762,9 @@ class TestExtractionStageIntegration:
         context = PipelineContext(
             document_id=uuid4(),
             version_id=uuid4(),
+            game_id=uuid4(),
+            document_type="core_rules",
+            expansion_id=None,
             file_path=str(tmp_path / "test.xyz"),
             document_format="xyz",
             file_size=10,

@@ -129,15 +129,23 @@ class TestPipelineContext:
         """PipelineContext with required fields."""
         doc_id = uuid4()
         ver_id = uuid4()
+        game_id = uuid4()
         ctx = PipelineContext(
             document_id=doc_id,
             version_id=ver_id,
+            game_id=game_id,
+            document_type="core_rules",
+            expansion_id=None,
             file_path="documents/game1/doc1/v1/rules.pdf",
             document_format="pdf",
             file_size=1024,
         )
         assert ctx.document_id == doc_id
         assert ctx.version_id == ver_id
+        assert ctx.game_id == game_id
+        assert ctx.document_type == "core_rules"
+        assert ctx.expansion_id is None
+        assert ctx.replaces_version_id is None
         assert ctx.parse_result is None
         assert ctx.structure_result is None
         assert ctx.chunks == []
