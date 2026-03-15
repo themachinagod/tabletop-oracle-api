@@ -394,3 +394,4 @@ async def restore_game(
     # Re-fetch to get tags
     game = await service.get_game(game.id)
     return ok(_game_to_response(game), request)
+
