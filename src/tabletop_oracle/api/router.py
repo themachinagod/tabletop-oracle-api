@@ -6,6 +6,7 @@ mounted once in main.py with the `/api/v1` prefix.
 
 from fastapi import APIRouter
 
+from tabletop_oracle.api.admin.guardrail_config import router as admin_guardrail_config_router
 from tabletop_oracle.api.admin.model_slots import router as admin_model_slots_router
 from tabletop_oracle.api.auth import router as auth_router
 from tabletop_oracle.api.documents.router import router as documents_router
@@ -44,3 +45,4 @@ api_router.include_router(messages_router, prefix="/sessions")
 
 # Admin — curator-only endpoints
 api_router.include_router(admin_model_slots_router, prefix="/admin/model-slots")
+api_router.include_router(admin_guardrail_config_router, prefix="/admin/guardrail-config")
