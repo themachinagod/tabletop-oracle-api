@@ -61,7 +61,7 @@ def _sync_db_url() -> Generator[str, None, None]:
         return
 
     container = PostgresContainer(
-        image="pgvector/pgvector:pg16",
+        image="postgres:16-alpine",
         username="test",
         password="test",
         dbname="tabletop_oracle_test",
