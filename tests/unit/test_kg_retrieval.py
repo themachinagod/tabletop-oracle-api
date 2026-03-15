@@ -273,9 +273,7 @@ class TestSemanticSearch:
 
     @pytest.mark.asyncio
     @patch("tabletop_oracle.services.kg.retrieval.search_similar_concepts")
-    async def test_passes_expansion_filter(
-        self, mock_search: AsyncMock
-    ) -> None:
+    async def test_passes_expansion_filter(self, mock_search: AsyncMock) -> None:
         """Verify expansion_ids are passed through to search."""
         mock_search.return_value = []
         db = _mock_db_session()
@@ -294,9 +292,7 @@ class TestSemanticSearch:
 
     @pytest.mark.asyncio
     @patch("tabletop_oracle.services.kg.retrieval.search_similar_concepts")
-    async def test_passes_custom_limit(
-        self, mock_search: AsyncMock
-    ) -> None:
+    async def test_passes_custom_limit(self, mock_search: AsyncMock) -> None:
         """Verify custom limit is passed to search."""
         mock_search.return_value = []
         db = _mock_db_session()
@@ -313,9 +309,7 @@ class TestSemanticSearch:
 
     @pytest.mark.asyncio
     @patch("tabletop_oracle.services.kg.retrieval.search_similar_concepts")
-    async def test_empty_results_returns_empty_list(
-        self, mock_search: AsyncMock
-    ) -> None:
+    async def test_empty_results_returns_empty_list(self, mock_search: AsyncMock) -> None:
         """Verify empty search results produce empty list."""
         mock_search.return_value = []
         db = _mock_db_session()
@@ -330,9 +324,7 @@ class TestSemanticSearch:
 
     @pytest.mark.asyncio
     @patch("tabletop_oracle.services.kg.retrieval.search_similar_concepts")
-    async def test_logs_retrieval_event(
-        self, mock_search: AsyncMock
-    ) -> None:
+    async def test_logs_retrieval_event(self, mock_search: AsyncMock) -> None:
         """Verify retrieval events are logged to audit table."""
         mock_search.return_value = []
         db = _mock_db_session()
@@ -354,9 +346,7 @@ class TestSemanticSearch:
 
     @pytest.mark.asyncio
     @patch("tabletop_oracle.services.kg.retrieval.search_similar_concepts")
-    async def test_logs_expansion_filter_active_flag(
-        self, mock_search: AsyncMock
-    ) -> None:
+    async def test_logs_expansion_filter_active_flag(self, mock_search: AsyncMock) -> None:
         """Verify audit log reflects expansion filter state."""
         mock_search.return_value = []
         db = _mock_db_session()
@@ -515,13 +505,9 @@ class TestGetConceptSources:
         service._get_sources_for_concept = AsyncMock(return_value=[])
 
         expansion_ids = [_EXPANSION_ID]
-        await service.get_concept_sources(
-            _CONCEPT_ID_1, active_expansion_ids=expansion_ids
-        )
+        await service.get_concept_sources(_CONCEPT_ID_1, active_expansion_ids=expansion_ids)
 
-        service._get_sources_for_concept.assert_called_once_with(
-            _CONCEPT_ID_1, expansion_ids
-        )
+        service._get_sources_for_concept.assert_called_once_with(_CONCEPT_ID_1, expansion_ids)
 
 
 # ---------------------------------------------------------------------------
@@ -594,9 +580,7 @@ class TestGetDocumentContribution:
         assoc_result2 = MagicMock()
         assoc_result2.all.return_value = [(_ASSOC_ID,)]
 
-        db.execute = AsyncMock(
-            side_effect=[concept_source_result2, sole_mock2, assoc_result2]
-        )
+        db.execute = AsyncMock(side_effect=[concept_source_result2, sole_mock2, assoc_result2])
 
         service = _make_service(db=db)
         contrib = await service.get_document_contribution(
@@ -651,9 +635,7 @@ class TestGetDocumentContribution:
         assoc_result = MagicMock()
         assoc_result.all.return_value = []
 
-        db.execute = AsyncMock(
-            side_effect=[empty_result, assoc_result]
-        )
+        db.execute = AsyncMock(side_effect=[empty_result, assoc_result])
 
         service = _make_service(db=db)
         contrib = await service.get_document_contribution(
@@ -688,9 +670,7 @@ class TestGetSourcesForConceptInternal:
         db.execute = AsyncMock(return_value=mock_result)
 
         service = _make_service(db=db)
-        results = await service._get_sources_for_concept(
-            _CONCEPT_ID_1, active_expansion_ids=None
-        )
+        results = await service._get_sources_for_concept(_CONCEPT_ID_1, active_expansion_ids=None)
 
         assert len(results) == 1
         assert results[0].document_name == "Core Rules"
@@ -704,9 +684,7 @@ class TestGetSourcesForConceptInternal:
         db.execute = AsyncMock(return_value=mock_result)
 
         service = _make_service(db=db)
-        results = await service._get_sources_for_concept(
-            _CONCEPT_ID_1, active_expansion_ids=[]
-        )
+        results = await service._get_sources_for_concept(_CONCEPT_ID_1, active_expansion_ids=[])
 
         assert results == []
         # Verify execute was called (query was constructed)
@@ -757,9 +735,7 @@ class TestGetDirectAssociationsInternal:
         incoming_result = MagicMock()
         incoming_result.all.return_value = [incoming_row]
 
-        db.execute = AsyncMock(
-            side_effect=[outgoing_result, incoming_result]
-        )
+        db.execute = AsyncMock(side_effect=[outgoing_result, incoming_result])
 
         service = _make_service(db=db)
         results = await service._get_direct_associations(
