@@ -7,7 +7,7 @@ immediately (AC-702).
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select
 
@@ -20,7 +20,10 @@ if TYPE_CHECKING:
 
 
 class ModelSlotRepository:
-    """Repository for reading model slot configuration from the database.
+    """Repository for model slot configuration data access.
+
+    Supports read-by-capability, list-all, and partial update operations.
+    No caching -- every call reads fresh from the database (AC-702).
 
     Args:
         session: SQLAlchemy async session for database operations.
@@ -41,3 +44,29 @@ class ModelSlotRepository:
         stmt = select(ModelSlot).where(ModelSlot.capability == capability)
         result = await self._session.execute(stmt)
         return result.scalar_one_or_none()
+
+    async def get_all(self) -> list[ModelSlot]:
+        """Fetch all model slot rows ordered by capability.
+
+        Returns:
+            List of all ModelSlot ORM entities.
+        """
+        stmt = select(ModelSlot).order_by(ModelSlot.capability)
+        result = await self._session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def update(self, slot: ModelSlot, fields: dict[str, Any]) -> ModelSlot:
+        """Apply partial updates to a model slot.
+
+        Args:
+            slot: The ModelSlot ORM entity to update.
+            fields: Mapping of field names to new values.
+
+        Returns:
+            The updated ModelSlot entity (flushed, not yet committed).
+        """
+        for key, value in fields.items():
+            setattr(slot, key, value)
+        await self._session.flush()
+        await self._session.refresh(slot)
+        return slot
