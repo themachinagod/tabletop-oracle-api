@@ -31,6 +31,11 @@ class Settings(BaseSettings):
     blob_storage_backend: str = "local"
     blob_storage_local_path: str = "./storage"
 
+    # Redis / Celery
+    redis_url: str = "redis://localhost:6379/0"
+    celery_broker_url: str = "redis://localhost:6379/0"
+    celery_result_backend: str = "redis://localhost:6379/1"
+
     # Application
     log_level: str = "INFO"
 
