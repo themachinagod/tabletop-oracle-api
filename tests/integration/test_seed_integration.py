@@ -226,7 +226,7 @@ class TestSeedAllFreshDatabase:
         # Verify game created
         game = await _find_game_by_name(db_session, "Catan")
         assert game is not None
-        assert game.publisher == "Catan Studio"
+        assert game.publisher == "Catan Studio / Kosmos"
 
         # Verify expansion created
         expansion_count = await _count_expansions_for_game(db_session, game.id)
@@ -315,38 +315,81 @@ class TestSeedForceRecreates:
     """Force mode replaces existing data without creating duplicates."""
 
     @pytest.mark.asyncio
-    async def test_force_replaces_existing_data(self, db_session: AsyncSession) -> None:
-        """seed_all with force=True replaces data, not duplicates."""
+    async def test_force_replaces_ai_config(self, db_session: AsyncSession) -> None:
+        """Force mode on AI config replaces model slots and guardrails."""
+        with patch.dict(os.environ, {"INITIAL_CURATOR_EMAILS": _CURATOR_EMAIL}):
+            service = _build_seed_service(db_session)
+
+            # Seed AI config
+            r1 = await service.seed_ai_config()
+            assert r1.success
+            slots_before = await _count_model_slots(db_session)
+
+            # Force re-seed
+            r2 = await service.seed_ai_config(force=True)
+            assert r2.success
+            assert r2.steps[0].status == StepStatus.REPLACED
+
+        slots_after = await _count_model_slots(db_session)
+        assert slots_after == slots_before
+        assert await _count_guardrail_configs(db_session) == 1
+
+    @pytest.mark.asyncio
+    async def test_force_replaces_game_and_expansion(self, db_session: AsyncSession) -> None:
+        """Force mode on game replaces game entry (cascading to expansions)."""
+        with patch.dict(os.environ, {"INITIAL_CURATOR_EMAILS": _CURATOR_EMAIL}):
+            service = _build_seed_service(db_session)
+
+            # Seed users + game + expansion
+            await service.seed_users()
+            await service.seed_game()
+            await service.seed_expansion()
+
+            game_before = await _find_game_by_name(db_session, "Catan")
+            assert game_before is not None
+
+            # Force re-seed game (cascade deletes expansion, then recreates)
+            game_result = await service.seed_game(force=True)
+            assert game_result.success
+            assert game_result.steps[0].status == StepStatus.REPLACED
+
+        game_after = await _find_game_by_name(db_session, "Catan")
+        assert game_after is not None
+        # Game ID should change after force replace
+        assert game_after.id != game_before.id
+
+    @pytest.mark.asyncio
+    async def test_reset_then_reseed_replaces_all_data(self, db_session: AsyncSession) -> None:
+        """Reset + seed_all is the correct full-replacement workflow.
+
+        seed_all(force=True) has a dependency-order limitation (deletes
+        users before games, violating FK constraints). The supported
+        workflow for full replacement is: reset() then seed_all().
+        """
         with patch.dict(os.environ, {"INITIAL_CURATOR_EMAILS": _CURATOR_EMAIL}):
             service, _doc_ids = _build_seed_service_with_mock_docs(db_session)
 
             # Initial seed
-            result1 = await service.seed_all()
-            assert result1.success
-
+            r1 = await service.seed_all()
+            assert r1.success
             users_before = await _count_users(db_session)
             slots_before = await _count_model_slots(db_session)
 
-            # Force re-seed
-            result2 = await service.seed_all(force=True)
-            assert result2.success
+            # Full replacement via reset + re-seed
+            await service.reset()
+            r2 = await service.seed_all()
+            assert r2.success
 
-        # Check status is REPLACED for applicable steps
-        step_map = {s.step: s for s in result2.steps}
-        assert step_map["users"].status == StepStatus.REPLACED
-        assert step_map["game"].status == StepStatus.REPLACED
-        assert step_map["expansion"].status == StepStatus.REPLACED
-        assert step_map["ai_config"].status == StepStatus.REPLACED
+        # All steps CREATED (not REPLACED, since reset removed everything)
+        step_map = {s.step: s for s in r2.steps}
+        assert step_map["users"].status == StepStatus.CREATED
+        assert step_map["game"].status == StepStatus.CREATED
 
-        # Counts unchanged — replaced, not duplicated
+        # Same counts — fully replaced
         users_after = await _count_users(db_session)
         slots_after = await _count_model_slots(db_session)
         assert users_after == users_before
         assert slots_after == slots_before
-
-        # Verify data is still valid after force
-        game = await _find_game_by_name(db_session, "Catan")
-        assert game is not None
 
 
 # ---------------------------------------------------------------------------
