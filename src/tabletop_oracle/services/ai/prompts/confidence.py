@@ -2,7 +2,8 @@
 
 Builds the system and user messages for the confidence assessment LLM call.
 The prompt instructs the model to evaluate how well the generated answer is
-supported by the provided knowledge graph sources.
+supported by the provided knowledge graph sources, using calibrated scoring
+bands and structured evaluation criteria.
 
 Design reference: EPIC-004 design.md, Stage 7: Confidence Score.
 """
@@ -15,24 +16,44 @@ if TYPE_CHECKING:
     from tabletop_oracle.services.ai.context import PipelineContext
 
 _SYSTEM_PROMPT = """\
-You are a confidence assessment engine for a tabletop game rules assistant. \
-Your task is to evaluate how confident the system should be in an answer \
-it generated, based on the supporting knowledge sources.
+You are a confidence assessor for the Tabletop Oracle, a rules advisory \
+system for tabletop games. Your task is to evaluate how confident the \
+system should be in the answer it generated, based on how well the \
+answer is supported by the provided knowledge sources.
 
-Evaluate confidence based on:
-- Number and quality of knowledge sources supporting the answer.
-- Whether sources agree or conflict with each other.
-- Completeness of the answer relative to the question asked.
-- Whether the answer required inference beyond what the sources explicitly state.
+Evaluate confidence using these criteria (in order of importance):
+1. **Source coverage:** Does the answer address the question using \
+content from the provided sources? Are the key claims backed by source \
+references?
+2. **Source agreement:** Do the sources agree with each other, or are \
+there conflicts? If conflicts exist, were they acknowledged and resolved \
+using the correct priority hierarchy (Errata > FAQ > Core Rules > Other)?
+3. **Directness of support:** Is the answer directly stated in the \
+sources, or did it require inference, interpretation, or synthesis \
+across multiple sources?
+4. **Completeness:** Does the answer fully address the question, or \
+does it only cover part of what was asked?
+5. **Source authority:** Are the supporting sources authoritative \
+(official rules, errata, FAQ) or lower-authority (community guides, \
+strategy content)?
 
 Respond with a JSON object containing exactly these fields:
 - "score": A float between 0.0 and 1.0 representing confidence.
-- "justification": A brief explanation of why this score was assigned.
+- "justification": A 1-2 sentence explanation of the primary factor \
+driving the score.
 
-Scoring guidelines:
-- 0.8-1.0: Answer is directly and fully supported by multiple agreeing sources.
-- 0.5-0.79: Answer is partially supported or required some inference.
-- 0.0-0.49: Answer has weak support, conflicting sources, or significant inference.
+Scoring calibration:
+- 0.9-1.0: Answer is directly and explicitly stated in one or more \
+authoritative sources (core rules, errata, FAQ). No inference needed.
+- 0.7-0.89: Answer is well-supported but required minor interpretation \
+or synthesis across sources. Or: strongly supported by a single source.
+- 0.5-0.69: Answer required meaningful inference, or sources partially \
+conflict (but conflicts were resolved), or only non-authoritative \
+sources support the answer.
+- 0.3-0.49: Answer has weak source support, or significant inference \
+was required, or the answer acknowledges gaps in available knowledge.
+- 0.0-0.29: Answer is largely unsupported by the provided sources, or \
+the system acknowledged it could not answer the question.
 
 Always respond with valid JSON only. No additional text or markdown."""
 
@@ -80,7 +101,8 @@ def _build_sources_section(ctx: PipelineContext) -> str:
     """Build a compact summary of knowledge sources for the prompt.
 
     Combines retrieval results and traversal results into a numbered
-    list showing content excerpts and similarity scores.
+    list showing content excerpts, similarity scores, document type,
+    and authority status.
 
     Args:
         ctx: Pipeline context with retrieval and traversal results.
@@ -92,7 +114,11 @@ def _build_sources_section(ctx: PipelineContext) -> str:
 
     for i, result in enumerate(ctx.retrieval_results, start=1):
         excerpt = result.content[:200]
-        lines.append(f"{i}. [score={result.score:.2f}] {excerpt}")
+        doc_type = getattr(result, "source", {}).get("document_type", "unknown")
+        authority = (
+            ", authoritative" if getattr(result, "source", {}).get("is_authoritative") else ""
+        )
+        lines.append(f"{i}. [score={result.score:.2f}, type={doc_type}{authority}] {excerpt}")
 
     offset = len(ctx.retrieval_results)
     for i, traversal in enumerate(ctx.traversal_results, start=offset + 1):
