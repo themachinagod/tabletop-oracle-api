@@ -20,6 +20,7 @@ from tabletop_oracle.models import (
     Citation,
     ContextAttachment,
     Document,
+    DocumentChunk,
     DocumentVersion,
     Expansion,
     Game,
@@ -66,6 +67,7 @@ class TestModelImports:
             GameTag,
             Expansion,
             Document,
+            DocumentChunk,
             DocumentVersion,
             Session,
             SessionExpansion,
@@ -85,7 +87,7 @@ class TestModelImports:
         assert Base.metadata is MappedBase.metadata
 
     def test_all_tables_registered_in_metadata(self) -> None:
-        """All 16 tables are registered in the shared metadata."""
+        """All 17 tables are registered in the shared metadata."""
         expected_tables = {
             "auth_sessions",
             "users",
@@ -93,6 +95,7 @@ class TestModelImports:
             "game_tags",
             "expansions",
             "documents",
+            "document_chunks",
             "document_versions",
             "sessions",
             "session_expansions",
@@ -125,6 +128,7 @@ class TestTableNames:
             (GameTag, "game_tags"),
             (Expansion, "expansions"),
             (Document, "documents"),
+            (DocumentChunk, "document_chunks"),
             (DocumentVersion, "document_versions"),
             (Session, "sessions"),
             (SessionExpansion, "session_expansions"),
@@ -277,14 +281,19 @@ class TestRelationships:
         assert {"game", "documents", "session_expansions"} <= rels
 
     def test_document_relationships(self) -> None:
-        """Document has game, expansion, versions."""
+        """Document has game, expansion, versions, chunks."""
         rels = self._get_relationship_names(Document)
-        assert {"game", "expansion", "versions"} <= rels
+        assert {"game", "expansion", "versions", "chunks"} <= rels
 
     def test_document_version_relationships(self) -> None:
-        """DocumentVersion has document, uploader."""
+        """DocumentVersion has document, uploader, chunks."""
         rels = self._get_relationship_names(DocumentVersion)
-        assert {"document", "uploader"} <= rels
+        assert {"document", "uploader", "chunks"} <= rels
+
+    def test_document_chunk_relationships(self) -> None:
+        """DocumentChunk has document and version relationships."""
+        rels = self._get_relationship_names(DocumentChunk)
+        assert {"document", "version"} <= rels
 
     def test_session_relationships(self) -> None:
         """Session has user, game, session_expansions, messages."""
@@ -367,6 +376,14 @@ class TestForeignKeys:
         """AuthSession.user_id has ON DELETE CASCADE."""
         assert self._get_fk_ondelete(AuthSession, "user_id") == "CASCADE"
 
+    def test_document_chunk_document_id_cascade(self) -> None:
+        """DocumentChunk.document_id has ON DELETE CASCADE."""
+        assert self._get_fk_ondelete(DocumentChunk, "document_id") == "CASCADE"
+
+    def test_document_chunk_version_id_cascade(self) -> None:
+        """DocumentChunk.version_id has ON DELETE CASCADE."""
+        assert self._get_fk_ondelete(DocumentChunk, "version_id") == "CASCADE"
+
     def test_document_game_id_no_cascade(self) -> None:
         """Document.game_id has no ON DELETE CASCADE (restrict)."""
         assert self._get_fk_ondelete(Document, "game_id") is None
@@ -412,6 +429,30 @@ class TestNullability:
     def test_document_error_message_nullable(self) -> None:
         """Document.error_message is nullable."""
         assert self._is_nullable(Document, "error_message")
+
+    def test_document_archived_at_nullable(self) -> None:
+        """Document.archived_at is nullable (null = active)."""
+        assert self._is_nullable(Document, "archived_at")
+
+    def test_document_chunk_section_path_nullable(self) -> None:
+        """DocumentChunk.section_path is nullable."""
+        assert self._is_nullable(DocumentChunk, "section_path")
+
+    def test_document_chunk_heading_nullable(self) -> None:
+        """DocumentChunk.heading is nullable."""
+        assert self._is_nullable(DocumentChunk, "heading")
+
+    def test_document_chunk_page_number_nullable(self) -> None:
+        """DocumentChunk.page_number is nullable."""
+        assert self._is_nullable(DocumentChunk, "page_number")
+
+    def test_document_chunk_content_not_nullable(self) -> None:
+        """DocumentChunk.content is NOT nullable."""
+        assert not self._is_nullable(DocumentChunk, "content")
+
+    def test_document_chunk_token_estimate_not_nullable(self) -> None:
+        """DocumentChunk.token_estimate is NOT nullable."""
+        assert not self._is_nullable(DocumentChunk, "token_estimate")
 
     def test_message_in_reply_to_id_nullable(self) -> None:
         """Message.in_reply_to_id is nullable."""
@@ -468,6 +509,7 @@ class TestBaseInheritance:
             AuthSession,
             User,
             Document,
+            DocumentChunk,
             DocumentVersion,
             Session,
             Message,
@@ -555,6 +597,13 @@ class TestServerDefaults:
         assert default is not None
         assert "true" in str(default.arg).lower()
 
+    def test_document_chunk_type_default_text(self) -> None:
+        """DocumentChunk.chunk_type defaults to 'text'."""
+        table = DocumentChunk.__table__  # type: ignore[attr-defined]
+        default = table.c.chunk_type.server_default
+        assert default is not None
+        assert "text" in str(default.arg)
+
     def test_document_version_is_active_default_true(self) -> None:
         """DocumentVersion.is_active defaults to TRUE."""
         table = DocumentVersion.__table__
@@ -585,3 +634,19 @@ class TestUniqueConstraints:
         """PlayerFeedback.message_id has a unique constraint."""
         table = PlayerFeedback.__table__
         assert table.c.message_id.unique
+
+    def test_document_chunk_composite_unique_constraint(self) -> None:
+        """DocumentChunk has unique constraint on (document_id, version_id, chunk_index)."""
+        table = DocumentChunk.__table__  # type: ignore[attr-defined]
+        uq_names = {c.name for c in table.constraints if isinstance(c, sa.UniqueConstraint)}
+        assert "uq_chunk_index" in uq_names
+
+    def test_document_chunk_unique_constraint_columns(self) -> None:
+        """uq_chunk_index covers document_id, version_id, chunk_index."""
+        table = DocumentChunk.__table__  # type: ignore[attr-defined]
+        for constraint in table.constraints:
+            if isinstance(constraint, sa.UniqueConstraint) and constraint.name == "uq_chunk_index":
+                col_names = {c.name for c in constraint.columns}
+                assert col_names == {"document_id", "version_id", "chunk_index"}
+                return
+        pytest.fail("uq_chunk_index constraint not found")
