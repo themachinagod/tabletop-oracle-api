@@ -9,7 +9,7 @@ Epic: themachinagod/tabletop-oracle-docs#12
 Task: themachinagod/tabletop-oracle-docs#74
 
 Revision ID: g7h8i9j0k1l2
-Revises: f6a7b8c9d0e1
+Revises: a1b2c3d4e5f6
 Create Date: 2026-03-15
 """
 
@@ -18,7 +18,7 @@ from collections.abc import Sequence
 from alembic import op
 
 revision: str = "g7h8i9j0k1l2"
-down_revision: str | None = "f6a7b8c9d0e1"
+down_revision: str | None = "a1b2c3d4e5f6"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
