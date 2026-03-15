@@ -69,7 +69,11 @@ def _make_mock_session(
 
 
 def _mock_auth_context(role: UserRole = UserRole.CURATOR):
-    """Context manager patching auth middleware for a user with given role."""
+    """Context manager patching auth middleware for a user with given role.
+
+    Disables ``bypass_auth`` so the middleware runs its full validation
+    path, even in CI environments where bypass_auth may default to True.
+    """
     user_id = uuid.UUID("12345678-1234-1234-1234-123456789abc")
     mock_session = _make_mock_session(user_id=user_id)
     mock_user = MagicMock()
@@ -89,6 +93,9 @@ def _mock_auth_context(role: UserRole = UserRole.CURATOR):
 
     class _Ctx:
         def __init__(self) -> None:
+            self._settings_patch = patch(
+                "tabletop_oracle.auth.middleware.settings",
+            )
             self._factory_patch = patch(
                 "tabletop_oracle.auth.middleware.async_session_factory",
                 return_value=mock_factory,
@@ -104,6 +111,9 @@ def _mock_auth_context(role: UserRole = UserRole.CURATOR):
             )
 
         def __enter__(self) -> _Ctx:
+            mock_settings = self._settings_patch.start()
+            mock_settings.bypass_auth = False
+            mock_settings.session_cookie_secure = False
             self._factory_patch.start()
             self._get_patch.start()
             self._touch_patch.start()
@@ -113,6 +123,7 @@ def _mock_auth_context(role: UserRole = UserRole.CURATOR):
             self._touch_patch.stop()
             self._get_patch.stop()
             self._factory_patch.stop()
+            self._settings_patch.stop()
 
     return _Ctx()
 
@@ -317,7 +328,12 @@ class TestInvalidCapability:
 
 
 class TestAuthEnforcement:
-    """Tests for authentication and role enforcement."""
+    """Tests for authentication and role enforcement.
+
+    These tests explicitly disable ``bypass_auth`` to ensure the auth
+    middleware runs its full validation path, even in CI environments
+    where bypass_auth may default to True.
+    """
 
     @pytest.mark.asyncio
     async def test_unauthenticated_returns_401(self) -> None:
@@ -325,9 +341,12 @@ class TestAuthEnforcement:
         app = _build_test_app()
         app.dependency_overrides[get_db] = _mock_db_session
 
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.get("/api/v1/admin/model-slots")
+        with patch("tabletop_oracle.auth.middleware.settings") as mock_settings:
+            mock_settings.bypass_auth = False
+            mock_settings.session_cookie_secure = False
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                resp = await client.get("/api/v1/admin/model-slots")
 
         assert resp.status_code == 401
 
