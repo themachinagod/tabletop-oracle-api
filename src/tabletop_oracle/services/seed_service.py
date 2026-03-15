@@ -3,12 +3,13 @@
 Runs seeding steps in dependency order: users, game, expansion, AI config,
 documents, await processing. Each step is idempotent — existing data is
 skipped unless ``force=True``. Uses existing domain services where available
-(GameService, ExpansionService, ModelSlotService) and direct DB operations
-where no service exists (user upsert, guardrail config).
+(GameService, ExpansionService, DocumentService, ModelSlotService) and direct
+DB operations where no service exists (user upsert, guardrail config).
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import dataclass, field
 from enum import Enum
@@ -16,24 +17,71 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import delete, select
 
-from tabletop_oracle.models.enums import ModelCapability, OAuthProvider, UserRole, UserStatus
+from tabletop_oracle.models.enums import (
+    DocumentStatus,
+    ModelCapability,
+    OAuthProvider,
+    UserRole,
+    UserStatus,
+)
 from tabletop_oracle.models.guardrail import GuardrailConfig
 from tabletop_oracle.models.model_slot import ModelSlot
 from tabletop_oracle.models.user import User
 
 if TYPE_CHECKING:
     import uuid
+    from pathlib import Path
 
     from sqlalchemy.ext.asyncio import AsyncSession
 
+    from tabletop_oracle.models.document import Document
     from tabletop_oracle.models.expansion import Expansion
     from tabletop_oracle.models.game import Game
+    from tabletop_oracle.services.document_service import DocumentService
     from tabletop_oracle.services.expansion_service import ExpansionService
     from tabletop_oracle.services.game_service import GameService
     from tabletop_oracle.services.model.slot_repository import ModelSlotRepository
-    from tabletop_oracle.services.seed_fixture_loader import SeedFixtureLoader
+    from tabletop_oracle.services.seed_fixture_loader import DocumentMetaFixture, SeedFixtureLoader
 
 logger = logging.getLogger(__name__)
+
+#: Default polling interval for document processing status (seconds).
+_POLL_INTERVAL_SECONDS = 5.0
+
+#: Default maximum wait time for document processing (seconds).
+_DEFAULT_WAIT_TIMEOUT = 300.0
+
+
+# ---------------------------------------------------------------------------
+# UploadFile adapter for fixture PDFs
+# ---------------------------------------------------------------------------
+
+
+class _FixtureUploadFile:
+    """Adapts a local fixture file to the ``UploadFile`` interface.
+
+    ``DocumentService.upload()`` expects a ``fastapi.UploadFile``. This
+    lightweight adapter reads a file from disk and exposes the same
+    ``read()``, ``filename``, and ``content_type`` interface without
+    pulling in the full Starlette/FastAPI dependency.
+
+    Args:
+        file_path: Absolute path to the fixture file.
+        content_type: MIME type for the file.
+    """
+
+    def __init__(self, file_path: Path, content_type: str = "application/pdf") -> None:
+        self.filename: str = file_path.name
+        self.content_type: str = content_type
+        self._data: bytes = file_path.read_bytes()
+
+    async def read(self) -> bytes:
+        """Return the full file content.
+
+        Returns:
+            Raw bytes of the fixture file.
+        """
+        return self._data
 
 
 # ---------------------------------------------------------------------------
@@ -111,6 +159,9 @@ class SeedService:
         game_service: Service for game CRUD operations.
         expansion_service: Service for expansion CRUD operations.
         model_slot_repo: Repository for model slot data access.
+        document_service: Service for document upload and retrieval.
+        wait_timeout: Maximum seconds to wait for document processing
+            (default 300).
     """
 
     def __init__(
@@ -120,12 +171,16 @@ class SeedService:
         game_service: GameService,
         expansion_service: ExpansionService,
         model_slot_repo: ModelSlotRepository,
+        document_service: DocumentService | None = None,
+        wait_timeout: float = _DEFAULT_WAIT_TIMEOUT,
     ) -> None:
         self._db = db
         self._loader = fixture_loader
         self._game_service = game_service
         self._expansion_service = expansion_service
         self._slot_repo = model_slot_repo
+        self._doc_service = document_service
+        self._wait_timeout = wait_timeout
 
     # ------------------------------------------------------------------
     # Public API
@@ -134,8 +189,8 @@ class SeedService:
     async def seed_all(self, *, force: bool = False) -> SeedResult:
         """Run the full seed process in dependency order.
 
-        Steps: users -> game -> expansion -> ai_config -> documents (stub)
-        -> await_processing (stub).
+        Steps: users -> game -> expansion -> ai_config -> documents
+        -> await_processing.
 
         Args:
             force: If True, replace existing data. If False, skip where
@@ -157,8 +212,8 @@ class SeedService:
 
         await self._seed_expansion(result, game_id, force=force)
         await self._seed_ai_config(result, force=force)
-        await self._seed_documents(result)
-        await self._await_processing(result)
+        doc_ids = await self._seed_documents(result, game_id, force=force)
+        await self._await_processing(result, doc_ids)
 
         return result
 
@@ -218,6 +273,24 @@ class SeedService:
         """
         result = SeedResult()
         await self._seed_ai_config(result, force=force)
+        return result
+
+    async def seed_documents(self, *, force: bool = False) -> SeedResult:
+        """Seed documents only. Requires game and expansion to exist.
+
+        Args:
+            force: If True, replace existing documents.
+
+        Returns:
+            SeedResult with document and await_processing step outcomes.
+        """
+        result = SeedResult()
+        game_id = await self._get_existing_game_id()
+        if game_id is None:
+            result.add("documents", StepStatus.FAILED, "Game must be seeded first")
+            return result
+        doc_ids = await self._seed_documents(result, game_id, force=force)
+        await self._await_processing(result, doc_ids)
         return result
 
     async def reset(self) -> SeedResult:
@@ -547,27 +620,241 @@ class SeedService:
             f"Model slots: {slots_detail}. Guardrail config: {guardrail_status.value}",
         )
 
-    async def _seed_documents(self, result: SeedResult) -> None:
-        """Stub: document seeding deferred to task #86.
+    async def _seed_documents(
+        self,
+        result: SeedResult,
+        game_id: uuid.UUID,
+        *,
+        force: bool,
+    ) -> list[uuid.UUID]:
+        """Upload seed document fixtures via DocumentService.
+
+        Loads document metadata from the manifest, resolves expansion
+        associations by name, reads the corresponding PDF files from the
+        fixtures directory, and uploads each via ``DocumentService.upload()``.
+        The upload triggers the standard Celery ingestion pipeline.
 
         Args:
             result: Accumulator for step outcomes.
-        """
-        result.add("documents", StepStatus.STUBBED, "Document seeding not yet implemented (#86)")
-        logger.info("Document seeding stubbed — will be implemented in task #86")
+            game_id: Parent game UUID.
+            force: If True, delete and re-upload existing documents.
 
-    async def _await_processing(self, result: SeedResult) -> None:
-        """Stub: await document processing deferred to task #86.
+        Returns:
+            List of uploaded document UUIDs (for await_processing).
+        """
+        if self._doc_service is None:
+            result.add(
+                "documents",
+                StepStatus.FAILED,
+                "DocumentService not provided — cannot seed documents",
+            )
+            return []
+
+        doc_metas = self._loader.load_document_metas()
+        if not doc_metas:
+            result.add("documents", StepStatus.SKIPPED, "No document fixtures found")
+            return []
+
+        curator = await self._get_curator_user()
+        if curator is None:
+            result.add("documents", StepStatus.FAILED, "No curator user — seed users first")
+            return []
+
+        uploaded_ids: list[uuid.UUID] = []
+        skipped_count = 0
+        error_count = 0
+
+        for meta in doc_metas:
+            try:
+                doc_id = await self._upload_single_document(meta, game_id, curator.id, force=force)
+                if doc_id is not None:
+                    uploaded_ids.append(doc_id)
+                else:
+                    skipped_count += 1
+            except Exception:
+                logger.exception("Failed to upload document '%s'", meta.name)
+                error_count += 1
+
+        if error_count > 0:
+            status = StepStatus.FAILED
+            detail = f"Uploaded {len(uploaded_ids)}, skipped {skipped_count}, errors {error_count}"
+        elif uploaded_ids:
+            status = StepStatus.REPLACED if force else StepStatus.CREATED
+            detail = f"Uploaded {len(uploaded_ids)} documents"
+            if skipped_count:
+                detail += f", skipped {skipped_count}"
+        else:
+            status = StepStatus.SKIPPED
+            detail = f"All {skipped_count} documents already exist"
+
+        result.add("documents", status, detail)
+        return uploaded_ids
+
+    async def _upload_single_document(
+        self,
+        meta: DocumentMetaFixture,
+        game_id: uuid.UUID,
+        curator_id: uuid.UUID,
+        *,
+        force: bool,
+    ) -> uuid.UUID | None:
+        """Upload a single document fixture via DocumentService.
+
+        Checks for an existing document by name (idempotency). Resolves
+        expansion association by name if specified. Creates a fixture
+        file adapter and delegates to ``DocumentService.upload()``.
 
         Args:
-            result: Accumulator for step outcomes.
+            meta: Document metadata from the fixture .meta.json.
+            game_id: Parent game UUID.
+            curator_id: Curator user UUID for attribution.
+            force: If True, delete existing document before re-upload.
+
+        Returns:
+            The created document UUID, or None if skipped.
         """
-        result.add(
-            "await_processing",
-            StepStatus.STUBBED,
-            "Await processing not yet implemented (#86)",
+        from tabletop_oracle.schemas.document import DocumentTypeFilter
+
+        assert self._doc_service is not None  # guarded by caller
+
+        existing = await self._find_document_by_name(game_id, meta.name)
+
+        if existing and not force:
+            logger.info("Document '%s' already exists, skipping", meta.name)
+            return None
+
+        if existing and force:
+            await self._db.delete(existing)
+            await self._db.flush()
+            logger.info("Force mode: deleted existing document '%s'", meta.name)
+
+        # Resolve expansion association by name
+        expansion_id: uuid.UUID | None = None
+        if meta.expansion_association:
+            expansion = await self._find_expansion_by_name(game_id, meta.expansion_association)
+            if expansion is None:
+                msg = (
+                    f"Expansion '{meta.expansion_association}' not found for "
+                    f"document '{meta.name}'"
+                )
+                raise RuntimeError(msg)
+            expansion_id = expansion.id
+
+        # Build a file adapter from the fixture PDF
+        fixture_file = self._resolve_fixture_pdf(meta.file)
+        upload_file = _FixtureUploadFile(fixture_file)
+
+        doc_type = DocumentTypeFilter(meta.type)
+        document = await self._doc_service.upload(
+            game_id=game_id,
+            file=upload_file,  # type: ignore[arg-type]
+            doc_type=doc_type,
+            user_id=curator_id,
+            name=meta.name,
+            expansion_id=expansion_id,
         )
-        logger.info("Await processing stubbed — will be implemented in task #86")
+
+        logger.info("Uploaded seed document '%s' (id=%s)", meta.name, document.id)
+        return document.id
+
+    def _resolve_fixture_pdf(self, filename: str) -> Path:
+        """Resolve a PDF filename to its absolute fixture path.
+
+        Searches the documents subdirectory tree within the fixtures
+        directory for the named file.
+
+        Args:
+            filename: The PDF filename from the meta fixture.
+
+        Returns:
+            Absolute path to the fixture PDF.
+
+        Raises:
+            FileNotFoundError: If the file does not exist.
+        """
+        # The PDF lives alongside the .meta.json in the documents directory
+        docs_dir = self._loader.fixtures_dir / "games"
+        matches = list(docs_dir.rglob(filename))
+        if not matches:
+            msg = f"Fixture PDF not found: {filename} under {docs_dir}"
+            raise FileNotFoundError(msg)
+        return matches[0]
+
+    async def _await_processing(
+        self,
+        result: SeedResult,
+        doc_ids: list[uuid.UUID],
+    ) -> None:
+        """Poll document status until all reach a terminal state.
+
+        Waits for all uploaded documents to reach ``processed`` or
+        ``error`` status. Reports progress at each poll interval.
+        Times out after ``wait_timeout`` seconds.
+
+        Args:
+            result: Accumulator for step outcomes.
+            doc_ids: Document UUIDs to monitor.
+        """
+        if not doc_ids:
+            result.add(
+                "await_processing",
+                StepStatus.SKIPPED,
+                "No documents to await",
+            )
+            return
+
+        elapsed = 0.0
+        processed_count = 0
+        error_count = 0
+
+        while elapsed < self._wait_timeout:
+            processed_count = 0
+            error_count = 0
+            pending_count = 0
+
+            for doc_id in doc_ids:
+                doc = await self._find_document_by_id(doc_id)
+                if doc is None:
+                    error_count += 1
+                    continue
+                if doc.status == DocumentStatus.PROCESSED:
+                    processed_count += 1
+                elif doc.status == DocumentStatus.ERROR:
+                    error_count += 1
+                else:
+                    pending_count += 1
+
+            logger.info(
+                "Document processing: %d processed, %d errors, %d pending (%.0fs elapsed)",
+                processed_count,
+                error_count,
+                pending_count,
+                elapsed,
+            )
+
+            if pending_count == 0:
+                break
+
+            await asyncio.sleep(_POLL_INTERVAL_SECONDS)
+            elapsed += _POLL_INTERVAL_SECONDS
+
+        total = len(doc_ids)
+        if processed_count == total:
+            status = StepStatus.CREATED
+            detail = f"All {total} documents processed successfully"
+        elif processed_count + error_count == total:
+            status = StepStatus.FAILED if error_count > 0 else StepStatus.CREATED
+            detail = f"{processed_count} processed, {error_count} errors"
+        else:
+            status = StepStatus.FAILED
+            remaining = total - processed_count - error_count
+            detail = (
+                f"Timeout after {self._wait_timeout}s: "
+                f"{processed_count} processed, {error_count} errors, "
+                f"{remaining} still pending"
+            )
+
+        result.add("await_processing", status, detail)
 
     # ------------------------------------------------------------------
     # Lookup helpers
@@ -621,6 +908,45 @@ class SeedService:
             ExpansionModel.game_id == game_id,
             ExpansionModel.name == name,
         )
+        result = await self._db.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def _find_document_by_name(
+        self,
+        game_id: uuid.UUID,
+        name: str,
+    ) -> Document | None:
+        """Find a document by name within a game.
+
+        Args:
+            game_id: Parent game UUID.
+            name: Document display name to search for.
+
+        Returns:
+            Document or None.
+        """
+        from tabletop_oracle.models.document import Document as DocumentModel
+
+        stmt = select(DocumentModel).where(
+            DocumentModel.game_id == game_id,
+            DocumentModel.name == name,
+            DocumentModel.archived_at.is_(None),
+        )
+        result = await self._db.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def _find_document_by_id(self, doc_id: uuid.UUID) -> Document | None:
+        """Find a document by ID for status polling.
+
+        Args:
+            doc_id: Document UUID.
+
+        Returns:
+            Document or None.
+        """
+        from tabletop_oracle.models.document import Document as DocumentModel
+
+        stmt = select(DocumentModel).where(DocumentModel.id == doc_id)
         result = await self._db.execute(stmt)
         return result.scalar_one_or_none()
 

@@ -16,6 +16,7 @@ import pytest
 
 from tabletop_oracle.models.enums import ModelCapability, UserRole, UserStatus
 from tabletop_oracle.services.seed_fixture_loader import (
+    DocumentMetaFixture,
     ExpansionFixture,
     GameFixture,
     GuardrailFixture,
@@ -27,6 +28,7 @@ from tabletop_oracle.services.seed_service import (
     SeedResult,
     SeedService,
     StepStatus,
+    _FixtureUploadFile,
 )
 
 # ---------------------------------------------------------------------------
@@ -178,12 +180,45 @@ class _DBResult:
         return self._value
 
 
+def _doc_meta_fixture(**overrides: Any) -> DocumentMetaFixture:
+    """Build a DocumentMetaFixture with sensible defaults."""
+    defaults = {
+        "name": "Catan Base Game Rules",
+        "type": "core_rules",
+        "format": "pdf",
+        "file": "catan-base-rules.pdf",
+        "expansion_id": None,
+        "expansion_association": None,
+    }
+    defaults.update(overrides)
+    return DocumentMetaFixture(**defaults)
+
+
+def _mock_document(
+    name: str = "Catan Base Game Rules",
+    status: str = "uploaded",
+) -> MagicMock:
+    """Build a mock Document ORM entity."""
+    doc = MagicMock()
+    doc.id = uuid.uuid4()
+    doc.name = name
+    doc.status = MagicMock()
+    doc.status.value = status
+    # Make status comparable with DocumentStatus enum values
+    from tabletop_oracle.models.enums import DocumentStatus
+
+    doc.status = DocumentStatus(status)
+    return doc
+
+
 def _build_service(
     db: AsyncMock | None = None,
     loader: MagicMock | None = None,
     game_service: AsyncMock | None = None,
     expansion_service: AsyncMock | None = None,
     slot_repo: AsyncMock | None = None,
+    document_service: AsyncMock | None = None,
+    wait_timeout: float = 300.0,
 ) -> SeedService:
     """Build a SeedService with mocked dependencies."""
     return SeedService(
@@ -192,6 +227,8 @@ def _build_service(
         game_service=game_service or AsyncMock(),
         expansion_service=expansion_service or AsyncMock(),
         model_slot_repo=slot_repo or AsyncMock(),
+        document_service=document_service,
+        wait_timeout=wait_timeout,
     )
 
 
@@ -259,6 +296,7 @@ class TestSeedAllEmptyDB:
             ModelSlotsFixture(slots=[_model_slot_fixture()]),
             _guardrail_fixture(),
         )
+        ldr.load_document_metas.return_value = [_doc_meta_fixture()]
         return ldr
 
     @pytest.fixture()
@@ -295,20 +333,24 @@ class TestSeedAllEmptyDB:
         async def execute_side_effect(stmt: Any) -> _DBResult:
             nonlocal call_count
             call_count += 1
-            # First calls: user lookups for each user fixture (None = not found)
-            # Then: curator lookup for game creation
-            # Then: game lookup for expansion (None, we use game_service return)
-            # Then: curator lookup for expansion creation
-            # Then: model slot lookup (None = not found)
-            # Then: guardrail lookup (None = not found)
-            # Strategy: return curator for curator lookups, None otherwise
-            # We'll check the statement to determine what's being queried
             return _DBResult(None)
 
         db.execute = AsyncMock(side_effect=execute_side_effect)
 
-        # Patch the internal methods to control lookup behavior
-        service = _build_service(db, loader, game_service, expansion_service, slot_repo)
+        # Mock DocumentService
+        uploaded_doc = _mock_document(status="processed")
+        doc_service = AsyncMock()
+        doc_service.upload = AsyncMock(return_value=uploaded_doc)
+
+        service = _build_service(
+            db,
+            loader,
+            game_service,
+            expansion_service,
+            slot_repo,
+            document_service=doc_service,
+            wait_timeout=0.01,
+        )
 
         # Override lookups to make them predictable
         service._find_user_by_email = AsyncMock(return_value=None)  # type: ignore[method-assign]
@@ -316,6 +358,11 @@ class TestSeedAllEmptyDB:
         service._find_game_by_name = AsyncMock(return_value=None)  # type: ignore[method-assign]
         service._find_expansion_by_name = AsyncMock(return_value=None)  # type: ignore[method-assign]
         service._find_guardrail_config = AsyncMock(return_value=None)  # type: ignore[method-assign]
+        service._find_document_by_name = AsyncMock(return_value=None)  # type: ignore[method-assign]
+        service._find_document_by_id = AsyncMock(return_value=uploaded_doc)  # type: ignore[method-assign]
+        service._resolve_fixture_pdf = MagicMock(  # type: ignore[method-assign]
+            return_value=MagicMock(name="fake.pdf", read_bytes=MagicMock(return_value=b"fake")),
+        )
 
         result = await service.seed_all()
 
@@ -331,6 +378,7 @@ class TestSeedAllEmptyDB:
         # Verify services were called
         game_service.create_game.assert_called_once()
         expansion_service.create_expansion.assert_called_once()
+        doc_service.upload.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
@@ -350,6 +398,7 @@ class TestSeedAllIdempotent:
         existing_expansion = _mock_expansion()
         existing_slot = _mock_model_slot()
         existing_config = _mock_guardrail_config()
+        existing_doc = _mock_document()
 
         loader.load_users.return_value = [_user_fixture()]
         loader.load_game.return_value = _game_fixture()
@@ -358,13 +407,22 @@ class TestSeedAllIdempotent:
             ModelSlotsFixture(slots=[_model_slot_fixture()]),
             _guardrail_fixture(),
         )
+        loader.load_document_metas.return_value = [_doc_meta_fixture()]
 
         game_service = AsyncMock()
         expansion_service = AsyncMock()
+        doc_service = AsyncMock()
         slot_repo = AsyncMock()
         slot_repo.get_by_capability.return_value = existing_slot
 
-        service = _build_service(db, loader, game_service, expansion_service, slot_repo)
+        service = _build_service(
+            db,
+            loader,
+            game_service,
+            expansion_service,
+            slot_repo,
+            document_service=doc_service,
+        )
 
         # All lookups find existing data
         service._find_user_by_email = AsyncMock(return_value=curator)  # type: ignore[method-assign]
@@ -372,20 +430,19 @@ class TestSeedAllIdempotent:
         service._find_game_by_name = AsyncMock(return_value=existing_game)  # type: ignore[method-assign]
         service._find_expansion_by_name = AsyncMock(return_value=existing_expansion)  # type: ignore[method-assign]
         service._find_guardrail_config = AsyncMock(return_value=existing_config)  # type: ignore[method-assign]
+        service._find_document_by_name = AsyncMock(return_value=existing_doc)  # type: ignore[method-assign]
 
         result = await service.seed_all()
 
         assert result.success is True
         # Check all data steps were skipped
         for step in result.steps:
-            if step.step in ("documents", "await_processing"):
-                assert step.status == StepStatus.STUBBED
-            else:
-                assert step.status == StepStatus.SKIPPED, f"{step.step} was {step.status}"
+            assert step.status == StepStatus.SKIPPED, f"{step.step} was {step.status}"
 
         # Services should NOT have been called
         game_service.create_game.assert_not_called()
         expansion_service.create_expansion.assert_not_called()
+        doc_service.upload.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -410,6 +467,8 @@ class TestSeedAllForceMode:
         existing_expansion = _mock_expansion()
         existing_slot = _mock_model_slot()
         existing_config = _mock_guardrail_config()
+        existing_doc = _mock_document()
+        new_doc = _mock_document(status="processed")
 
         loader.load_users.return_value = [_user_fixture()]
         loader.load_game.return_value = _game_fixture()
@@ -418,15 +477,26 @@ class TestSeedAllForceMode:
             ModelSlotsFixture(slots=[_model_slot_fixture()]),
             _guardrail_fixture(),
         )
+        loader.load_document_metas.return_value = [_doc_meta_fixture()]
 
         game_service = AsyncMock()
         game_service.create_game.return_value = new_game
         expansion_service = AsyncMock()
         expansion_service.create_expansion.return_value = _mock_expansion()
+        doc_service = AsyncMock()
+        doc_service.upload = AsyncMock(return_value=new_doc)
         slot_repo = AsyncMock()
         slot_repo.get_by_capability.return_value = existing_slot
 
-        service = _build_service(db, loader, game_service, expansion_service, slot_repo)
+        service = _build_service(
+            db,
+            loader,
+            game_service,
+            expansion_service,
+            slot_repo,
+            document_service=doc_service,
+            wait_timeout=0.01,
+        )
 
         # All lookups find existing data (will be replaced)
         service._find_user_by_email = AsyncMock(return_value=curator)  # type: ignore[method-assign]
@@ -434,6 +504,11 @@ class TestSeedAllForceMode:
         service._find_game_by_name = AsyncMock(return_value=existing_game)  # type: ignore[method-assign]
         service._find_expansion_by_name = AsyncMock(return_value=existing_expansion)  # type: ignore[method-assign]
         service._find_guardrail_config = AsyncMock(return_value=existing_config)  # type: ignore[method-assign]
+        service._find_document_by_name = AsyncMock(return_value=existing_doc)  # type: ignore[method-assign]
+        service._find_document_by_id = AsyncMock(return_value=new_doc)  # type: ignore[method-assign]
+        service._resolve_fixture_pdf = MagicMock(  # type: ignore[method-assign]
+            return_value=MagicMock(name="fake.pdf", read_bytes=MagicMock(return_value=b"fake")),
+        )
 
         result = await service.seed_all(force=True)
 
@@ -445,10 +520,13 @@ class TestSeedAllForceMode:
         # Services should have been called to create new records
         game_service.create_game.assert_called_once()
         expansion_service.create_expansion.assert_called_once()
+        doc_service.upload.assert_called_once()
 
         # Check statuses reflect replacement
         game_step = next(s for s in result.steps if s.step == "game")
         assert game_step.status == StepStatus.REPLACED
+        doc_step = next(s for s in result.steps if s.step == "documents")
+        assert doc_step.status == StepStatus.REPLACED
 
 
 # ---------------------------------------------------------------------------
@@ -721,14 +799,15 @@ class TestErrorHandling:
 
 
 # ---------------------------------------------------------------------------
-# Stubs
+# Document seeding
 # ---------------------------------------------------------------------------
 
 
-class TestStubs:
-    """Document seeding and await processing are stubbed."""
+class TestSeedDocuments:
+    """Tests for _seed_documents and _await_processing."""
 
-    async def test_seed_documents_is_stubbed(self) -> None:
+    async def test_seed_documents_no_service_fails(self) -> None:
+        """Documents step fails when DocumentService is not provided."""
         db = AsyncMock()
         db.add = MagicMock()
         db.flush = AsyncMock()
@@ -759,5 +838,296 @@ class TestStubs:
 
         doc_step = next(s for s in result.steps if s.step == "documents")
         await_step = next(s for s in result.steps if s.step == "await_processing")
-        assert doc_step.status == StepStatus.STUBBED
-        assert await_step.status == StepStatus.STUBBED
+        assert doc_step.status == StepStatus.FAILED
+        assert "DocumentService not provided" in doc_step.detail
+        assert await_step.status == StepStatus.SKIPPED
+
+    async def test_seed_documents_uploads_all(self) -> None:
+        """Documents are uploaded via DocumentService when fixtures exist."""
+        db = AsyncMock()
+        db.add = MagicMock()
+        db.flush = AsyncMock()
+
+        doc1 = _mock_document(status="processed")
+        doc2 = _mock_document(name="Seafarers Rules", status="processed")
+
+        doc_service = AsyncMock()
+        doc_service.upload = AsyncMock(side_effect=[doc1, doc2])
+
+        loader = MagicMock()
+        loader.load_document_metas.return_value = [
+            _doc_meta_fixture(name="Catan Base Game Rules"),
+            _doc_meta_fixture(
+                name="Seafarers Rules",
+                type="expansion_rules",
+                file="catan-seafarers-rules.pdf",
+                expansion_association="Catan: Seafarers",
+            ),
+        ]
+
+        curator = _mock_user()
+        expansion = _mock_expansion()
+        game_id = uuid.uuid4()
+
+        service = _build_service(db, loader, document_service=doc_service, wait_timeout=0.01)
+        service._get_curator_user = AsyncMock(return_value=curator)  # type: ignore[method-assign]
+        service._find_document_by_name = AsyncMock(return_value=None)  # type: ignore[method-assign]
+        service._find_expansion_by_name = AsyncMock(return_value=expansion)  # type: ignore[method-assign]
+        service._resolve_fixture_pdf = MagicMock(  # type: ignore[method-assign]
+            return_value=MagicMock(name="fake.pdf", read_bytes=MagicMock(return_value=b"fake")),
+        )
+        service._find_document_by_id = AsyncMock(return_value=doc1)  # type: ignore[method-assign]
+
+        from tabletop_oracle.services.seed_service import SeedResult
+
+        result = SeedResult()
+        doc_ids = await service._seed_documents(result, game_id, force=False)
+
+        assert len(doc_ids) == 2
+        assert doc_service.upload.call_count == 2
+        doc_step = next(s for s in result.steps if s.step == "documents")
+        assert doc_step.status == StepStatus.CREATED
+
+    async def test_seed_documents_skips_existing(self) -> None:
+        """Existing documents are skipped when force is False."""
+        db = AsyncMock()
+        doc_service = AsyncMock()
+
+        existing_doc = _mock_document()
+
+        loader = MagicMock()
+        loader.load_document_metas.return_value = [_doc_meta_fixture()]
+
+        curator = _mock_user()
+        game_id = uuid.uuid4()
+
+        service = _build_service(db, loader, document_service=doc_service)
+        service._get_curator_user = AsyncMock(return_value=curator)  # type: ignore[method-assign]
+        service._find_document_by_name = AsyncMock(return_value=existing_doc)  # type: ignore[method-assign]
+
+        from tabletop_oracle.services.seed_service import SeedResult
+
+        result = SeedResult()
+        doc_ids = await service._seed_documents(result, game_id, force=False)
+
+        assert len(doc_ids) == 0
+        doc_service.upload.assert_not_called()
+        doc_step = next(s for s in result.steps if s.step == "documents")
+        assert doc_step.status == StepStatus.SKIPPED
+
+    async def test_seed_documents_force_replaces(self) -> None:
+        """Force mode deletes and re-uploads existing documents."""
+        db = AsyncMock()
+        db.delete = AsyncMock()
+        db.flush = AsyncMock()
+
+        existing_doc = _mock_document()
+        new_doc = _mock_document(status="uploaded")
+
+        doc_service = AsyncMock()
+        doc_service.upload = AsyncMock(return_value=new_doc)
+
+        loader = MagicMock()
+        loader.load_document_metas.return_value = [_doc_meta_fixture()]
+
+        curator = _mock_user()
+        game_id = uuid.uuid4()
+
+        service = _build_service(db, loader, document_service=doc_service, wait_timeout=0.01)
+        service._get_curator_user = AsyncMock(return_value=curator)  # type: ignore[method-assign]
+        service._find_document_by_name = AsyncMock(return_value=existing_doc)  # type: ignore[method-assign]
+        service._resolve_fixture_pdf = MagicMock(  # type: ignore[method-assign]
+            return_value=MagicMock(name="fake.pdf", read_bytes=MagicMock(return_value=b"fake")),
+        )
+
+        from tabletop_oracle.services.seed_service import SeedResult
+
+        result = SeedResult()
+        doc_ids = await service._seed_documents(result, game_id, force=True)
+
+        assert len(doc_ids) == 1
+        db.delete.assert_called_once_with(existing_doc)
+        doc_service.upload.assert_called_once()
+        doc_step = next(s for s in result.steps if s.step == "documents")
+        assert doc_step.status == StepStatus.REPLACED
+
+    async def test_seed_documents_handles_upload_error(self) -> None:
+        """Upload errors are captured; other documents continue."""
+        db = AsyncMock()
+        db.delete = AsyncMock()
+        db.flush = AsyncMock()
+
+        good_doc = _mock_document(status="uploaded")
+        doc_service = AsyncMock()
+        doc_service.upload = AsyncMock(side_effect=[RuntimeError("blob store error"), good_doc])
+
+        loader = MagicMock()
+        loader.load_document_metas.return_value = [
+            _doc_meta_fixture(name="Bad Doc", file="bad.pdf"),
+            _doc_meta_fixture(name="Good Doc", file="good.pdf"),
+        ]
+
+        curator = _mock_user()
+        game_id = uuid.uuid4()
+
+        service = _build_service(db, loader, document_service=doc_service, wait_timeout=0.01)
+        service._get_curator_user = AsyncMock(return_value=curator)  # type: ignore[method-assign]
+        service._find_document_by_name = AsyncMock(return_value=None)  # type: ignore[method-assign]
+        service._resolve_fixture_pdf = MagicMock(  # type: ignore[method-assign]
+            return_value=MagicMock(name="fake.pdf", read_bytes=MagicMock(return_value=b"fake")),
+        )
+
+        from tabletop_oracle.services.seed_service import SeedResult
+
+        result = SeedResult()
+        doc_ids = await service._seed_documents(result, game_id, force=False)
+
+        assert len(doc_ids) == 1
+        doc_step = next(s for s in result.steps if s.step == "documents")
+        assert doc_step.status == StepStatus.FAILED
+        assert "errors 1" in doc_step.detail
+
+    async def test_seed_documents_no_curator_fails(self) -> None:
+        """Missing curator user fails the documents step."""
+        db = AsyncMock()
+        doc_service = AsyncMock()
+
+        loader = MagicMock()
+        loader.load_document_metas.return_value = [_doc_meta_fixture()]
+
+        game_id = uuid.uuid4()
+
+        service = _build_service(db, loader, document_service=doc_service)
+        service._get_curator_user = AsyncMock(return_value=None)  # type: ignore[method-assign]
+
+        from tabletop_oracle.services.seed_service import SeedResult
+
+        result = SeedResult()
+        doc_ids = await service._seed_documents(result, game_id, force=False)
+
+        assert len(doc_ids) == 0
+        doc_step = next(s for s in result.steps if s.step == "documents")
+        assert doc_step.status == StepStatus.FAILED
+        assert "curator" in doc_step.detail.lower()
+
+    async def test_seed_documents_public_method(self) -> None:
+        """seed_documents public method requires game to exist."""
+        db = AsyncMock()
+        loader = MagicMock()
+        loader.load_game.return_value = _game_fixture()
+
+        service = _build_service(db, loader)
+        service._find_game_by_name = AsyncMock(return_value=None)  # type: ignore[method-assign]
+
+        result = await service.seed_documents()
+
+        assert result.success is False
+        assert result.steps[0].status == StepStatus.FAILED
+        assert "Game must be seeded first" in result.steps[0].detail
+
+
+# ---------------------------------------------------------------------------
+# Await processing
+# ---------------------------------------------------------------------------
+
+
+class TestAwaitProcessing:
+    """Tests for _await_processing polling."""
+
+    async def test_await_processing_all_processed(self) -> None:
+        """Reports success when all documents reach processed status."""
+        db = AsyncMock()
+        doc1 = _mock_document(status="processed")
+        doc2 = _mock_document(status="processed")
+
+        service = _build_service(db, wait_timeout=10.0)
+        service._find_document_by_id = AsyncMock(side_effect=[doc1, doc2])  # type: ignore[method-assign]
+
+        from tabletop_oracle.services.seed_service import SeedResult
+
+        result = SeedResult()
+        await service._await_processing(result, [doc1.id, doc2.id])
+
+        step = next(s for s in result.steps if s.step == "await_processing")
+        assert step.status == StepStatus.CREATED
+        assert "2 documents processed" in step.detail
+
+    async def test_await_processing_with_errors(self) -> None:
+        """Reports failure when some documents have errors."""
+        db = AsyncMock()
+        doc_ok = _mock_document(status="processed")
+        doc_err = _mock_document(status="error")
+
+        service = _build_service(db, wait_timeout=10.0)
+        service._find_document_by_id = AsyncMock(  # type: ignore[method-assign]
+            side_effect=[doc_ok, doc_err],
+        )
+
+        from tabletop_oracle.services.seed_service import SeedResult
+
+        result = SeedResult()
+        await service._await_processing(result, [doc_ok.id, doc_err.id])
+
+        step = next(s for s in result.steps if s.step == "await_processing")
+        assert step.status == StepStatus.FAILED
+        assert "1 errors" in step.detail
+
+    async def test_await_processing_timeout(self) -> None:
+        """Reports timeout when documents stay pending beyond limit."""
+        db = AsyncMock()
+        pending_doc = _mock_document(status="uploaded")
+
+        service = _build_service(db, wait_timeout=0.01)
+        service._find_document_by_id = AsyncMock(return_value=pending_doc)  # type: ignore[method-assign]
+
+        from tabletop_oracle.services.seed_service import SeedResult
+
+        result = SeedResult()
+        await service._await_processing(result, [pending_doc.id])
+
+        step = next(s for s in result.steps if s.step == "await_processing")
+        assert step.status == StepStatus.FAILED
+        assert "Timeout" in step.detail
+
+    async def test_await_processing_empty_list(self) -> None:
+        """No documents to await is skipped."""
+        db = AsyncMock()
+        service = _build_service(db)
+
+        from tabletop_oracle.services.seed_service import SeedResult
+
+        result = SeedResult()
+        await service._await_processing(result, [])
+
+        step = next(s for s in result.steps if s.step == "await_processing")
+        assert step.status == StepStatus.SKIPPED
+
+
+# ---------------------------------------------------------------------------
+# FixtureUploadFile adapter
+# ---------------------------------------------------------------------------
+
+
+class TestFixtureUploadFile:
+    """Tests for the _FixtureUploadFile adapter."""
+
+    async def test_read_returns_file_content(self, tmp_path: Any) -> None:
+        """read() returns raw bytes of the fixture file."""
+        test_file = tmp_path / "test.pdf"
+        test_file.write_bytes(b"%PDF-1.4 fake content")
+
+        upload = _FixtureUploadFile(test_file)
+
+        data = await upload.read()
+        assert data == b"%PDF-1.4 fake content"
+        assert upload.filename == "test.pdf"
+        assert upload.content_type == "application/pdf"
+
+    def test_custom_content_type(self, tmp_path: Any) -> None:
+        """Content type can be overridden."""
+        test_file = tmp_path / "test.md"
+        test_file.write_bytes(b"# test")
+
+        upload = _FixtureUploadFile(test_file, content_type="text/markdown")
+
+        assert upload.content_type == "text/markdown"
