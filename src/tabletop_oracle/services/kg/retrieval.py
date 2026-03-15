@@ -241,9 +241,7 @@ class KGRetrievalService:
 
         results: list[RetrievalResult] = []
         for sim in similarity_results:
-            sources = await self._get_sources_for_concept(
-                sim.concept_id, active_expansion_ids
-            )
+            sources = await self._get_sources_for_concept(sim.concept_id, active_expansion_ids)
             associations = await self._get_direct_associations(
                 sim.concept_id, game_id, active_expansion_ids
             )
@@ -329,9 +327,7 @@ class KGRetrievalService:
                              OR s.expansion_id = ANY(:active_expansion_ids))
                     )
                 """
-                params["active_expansion_ids"] = [
-                    str(eid) for eid in active_expansion_ids
-                ]
+                params["active_expansion_ids"] = [str(eid) for eid in active_expansion_ids]
             else:
                 # Empty list = base game only
                 expansion_filter_clause = """
@@ -475,9 +471,7 @@ class KGRetrievalService:
         Returns:
             List of SourceReference ordered by is_authoritative DESC.
         """
-        return await self._get_sources_for_concept(
-            concept_id, active_expansion_ids
-        )
+        return await self._get_sources_for_concept(concept_id, active_expansion_ids)
 
     async def get_document_contribution(
         self,
@@ -564,9 +558,7 @@ class KGRetrievalService:
         Returns:
             List of SourceReference ordered by is_authoritative DESC.
         """
-        stmt = select(KGConceptSource).where(
-            KGConceptSource.concept_id == concept_id
-        )
+        stmt = select(KGConceptSource).where(KGConceptSource.concept_id == concept_id)
 
         if active_expansion_ids is not None:
             if active_expansion_ids:
