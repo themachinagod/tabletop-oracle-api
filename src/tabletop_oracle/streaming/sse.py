@@ -75,12 +75,17 @@ class _EventBuffer:
 def _format_event(event_type: str, event_id: int, data: dict[str, object]) -> str:
     """Format a single SSE event in wire format.
 
+    Omits the SSE ``event:`` field so all events dispatch via the browser's
+    generic ``onmessage`` handler. The event type is carried in the JSON
+    payload (``data.type``) for client-side routing, avoiding the need to
+    register per-type ``addEventListener`` calls on EventSource.
+
     Returns:
-        A string with ``event:``, ``id:``, ``data:`` fields terminated by
-        a blank line, per the SSE specification.
+        A string with ``id:`` and ``data:`` fields terminated by a blank
+        line, per the SSE specification.
     """
     json_data = json.dumps(data, separators=(",", ":"))
-    return f"event: {event_type}\nid: {event_id}\ndata: {json_data}\n\n"
+    return f"id: {event_id}\ndata: {json_data}\n\n"
 
 
 def _build_heartbeat(event_id: int) -> str:

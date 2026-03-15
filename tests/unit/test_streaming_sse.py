@@ -98,10 +98,10 @@ def _parse_sse_data(block: str) -> dict[str, Any]:
 class TestFormatEvent:
     """Tests for _format_event wire format."""
 
-    def test_contains_event_field(self) -> None:
-        """Output contains the event type line."""
+    def test_omits_event_field(self) -> None:
+        """Output omits the SSE event: field (type is in JSON data.type)."""
         result = _format_event("stream.token", 1, {"type": "stream.token"})
-        assert "event: stream.token\n" in result
+        assert "event:" not in result
 
     def test_contains_id_field(self) -> None:
         """Output contains the event ID line."""
@@ -122,12 +122,11 @@ class TestFormatEvent:
         assert result.endswith("\n\n")
 
     def test_field_order(self) -> None:
-        """Fields appear in order: event, id, data."""
+        """Fields appear in order: id, data (no event: field)."""
         result = _format_event("test", 1, {"type": "test"})
         lines = result.strip().splitlines()
-        assert lines[0].startswith("event: ")
-        assert lines[1].startswith("id: ")
-        assert lines[2].startswith("data: ")
+        assert lines[0].startswith("id: ")
+        assert lines[1].startswith("data: ")
 
 
 # ---------------------------------------------------------------------------
@@ -139,10 +138,10 @@ class TestBuildHeartbeat:
     """Tests for heartbeat event construction."""
 
     def test_heartbeat_type(self) -> None:
-        """Heartbeat has type 'heartbeat'."""
+        """Heartbeat has type 'heartbeat' in JSON data."""
         raw = _build_heartbeat(5)
-        parsed = _parse_sse_block(raw)
-        assert parsed["event"] == "heartbeat"
+        data = _parse_sse_data(raw)
+        assert data["type"] == "heartbeat"
 
     def test_heartbeat_id(self) -> None:
         """Heartbeat carries the assigned event ID."""
@@ -173,12 +172,12 @@ class TestBuildHeartbeat:
 class TestBuildEvent:
     """Tests for domain event construction."""
 
-    def test_event_type_in_sse_field(self) -> None:
-        """SSE event field matches the SseEvent type."""
+    def test_event_type_not_in_sse_field(self) -> None:
+        """SSE event: field is omitted (type is in JSON data only)."""
         event = SseEvent(type="stream.token", payload={"token": "x"})
         raw = _build_event(event, 3)
         parsed = _parse_sse_block(raw)
-        assert parsed["event"] == "stream.token"
+        assert "event" not in parsed
 
     def test_event_type_in_json_data(self) -> None:
         """JSON data 'type' field matches the SseEvent type."""
@@ -333,13 +332,16 @@ class TestSseResponse:
 
         # First event.
         parsed_0 = _parse_sse_block(chunks[0])
-        assert parsed_0["event"] == "stream.started"
+        assert "event" not in parsed_0  # type is in JSON data only
         assert parsed_0["id"] == "1"
+        data_0 = _parse_sse_data(chunks[0])
+        assert data_0["type"] == "stream.started"
 
         # Second event.
         parsed_1 = _parse_sse_block(chunks[1])
-        assert parsed_1["event"] == "stream.token"
         assert parsed_1["id"] == "2"
+        data_1 = _parse_sse_data(chunks[1])
+        assert data_1["type"] == "stream.token"
 
     async def test_monotonic_event_ids(self) -> None:
         """Event IDs increase monotonically."""
@@ -468,8 +470,8 @@ class TestSseResponse:
         chunks = await _collect_events(response.body_iterator)  # type: ignore[arg-type]
 
         assert len(chunks) == 1
-        parsed = _parse_sse_block(chunks[0])
-        assert parsed["event"] == "a"
+        data = _parse_sse_data(chunks[0])
+        assert data["type"] == "a"
 
     async def test_empty_generator_produces_no_events(self) -> None:
         """An empty generator produces no SSE output."""
