@@ -1,6 +1,7 @@
-"""Business logic for message history retrieval and query cancellation.
+"""Business logic for message submission, history retrieval, and query cancellation.
 
-Encapsulates session ownership validation, delegates paginated message
+Encapsulates session ownership validation, message persistence with
+sequence numbering, context attachment handling, delegates paginated message
 listing to the MessageRepository, and handles query cancellation by
 setting the cancelled_at flag on in-progress messages. All domain errors
 use the F001 exception hierarchy.
@@ -13,7 +14,19 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from tabletop_oracle.auth.ownership import check_ownership
-from tabletop_oracle.errors.exceptions import NotFoundError
+from tabletop_oracle.errors.exceptions import (
+    ConflictError,
+    ContentTooLargeError,
+    NotFoundError,
+    UnprocessableEntityError,
+)
+from tabletop_oracle.models.enums import (
+    ContextAttachmentType,
+    MessageType,
+    SessionStatus,
+)
+from tabletop_oracle.models.message import ContextAttachment
+from tabletop_oracle.models.message import Message as MessageModel
 
 if TYPE_CHECKING:
     import uuid
@@ -22,16 +35,20 @@ if TYPE_CHECKING:
     from tabletop_oracle.auth.models import CurrentUser
     from tabletop_oracle.models.message import Message
     from tabletop_oracle.repositories.message_repository import MessageRepository
+    from tabletop_oracle.schemas.message import MessageSubmitRequest
 
 logger = logging.getLogger(__name__)
 
+#: Maximum image file size in bytes (10 MB).
+MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024
+
 
 class MessageService:
-    """Business logic for retrieving conversation message history and cancellation.
+    """Business logic for message submission, history retrieval, and cancellation.
 
     Validates session existence and ownership before delegating to the
     repository for paginated message retrieval with eager-loaded relations,
-    and handles query cancellation.
+    message submission with sequence numbering, and query cancellation.
 
     Args:
         message_repo: Repository for message data access operations.
@@ -39,6 +56,83 @@ class MessageService:
 
     def __init__(self, message_repo: MessageRepository) -> None:
         self._repo = message_repo
+
+    async def submit_message(
+        self,
+        session_id: uuid.UUID,
+        request: MessageSubmitRequest,
+        current_user: CurrentUser,
+        image_files: dict[str, tuple[bytes, str]] | None = None,
+    ) -> Message:
+        """Submit a player message to a session.
+
+        Validates ownership/status, assigns sequence, persists message
+        and attachments.
+
+        Args:
+            session_id: The game session UUID.
+            request: Validated submission request.
+            current_user: The authenticated user.
+            image_files: file_name -> (bytes, content_type) for images.
+
+        Returns:
+            The persisted Message with context_attachments loaded.
+
+        Raises:
+            NotFoundError: Session not found or not owned.
+            ConflictError: Session is archived.
+            UnprocessableEntityError: Content is whitespace-only.
+            ContentTooLargeError: Image exceeds 10MB.
+        """
+        session = await self._repo.get_session(session_id)
+        if session is None:
+            raise NotFoundError("Session", str(session_id))
+
+        check_ownership(
+            resource_user_id=session.user_id,
+            current_user=current_user,
+            resource_type="Session",
+            resource_id=str(session_id),
+        )
+
+        if session.status == SessionStatus.ARCHIVED:
+            raise ConflictError("Session is archived")
+
+        if not request.content.strip():
+            raise UnprocessableEntityError("Message content must not be empty")
+
+        if image_files:
+            for file_name, (data, _ct) in image_files.items():
+                if len(data) > MAX_IMAGE_SIZE_BYTES:
+                    raise ContentTooLargeError(f"Image '{file_name}' exceeds maximum size of 10MB")
+
+        sequence = await self._repo.get_next_sequence(session_id)
+        message = MessageModel(
+            session_id=session_id,
+            type=MessageType.USER_QUESTION,
+            content=request.content,
+            sequence=sequence,
+        )
+        message = await self._repo.create_message(message)
+
+        attachments = await self._build_attachments(
+            message,
+            session_id,
+            request,
+            image_files,
+        )
+        message.context_attachments = attachments
+
+        logger.info(
+            "Message submitted",
+            extra={
+                "message_id": str(message.id),
+                "session_id": str(session_id),
+                "sequence": sequence,
+                "attachment_count": len(attachments),
+            },
+        )
+        return message
 
     async def cancel_message(
         self,
@@ -103,6 +197,43 @@ class MessageService:
 
         return message, True
 
+    async def _build_attachments(
+        self,
+        message: Message,
+        session_id: uuid.UUID,
+        request: MessageSubmitRequest,
+        image_files: dict[str, tuple[bytes, str]] | None,
+    ) -> list[ContextAttachment]:
+        """Build and persist context attachments."""
+        attachments: list[ContextAttachment] = []
+        for att_req in request.context_attachments:
+            if att_req.type == "text":
+                attachments.append(
+                    ContextAttachment(
+                        message_id=message.id,
+                        type=ContextAttachmentType.TEXT,
+                        content=att_req.content,
+                    )
+                )
+            elif att_req.type == "image":
+                fp, fs = None, None
+                if image_files and att_req.file_name and att_req.file_name in image_files:
+                    data, _ = image_files[att_req.file_name]
+                    fs = len(data)
+                    fp = f"sessions/{session_id}/messages/{message.id}/{att_req.file_name}"
+                attachments.append(
+                    ContextAttachment(
+                        message_id=message.id,
+                        type=ContextAttachmentType.IMAGE,
+                        file_name=att_req.file_name,
+                        file_path=fp,
+                        file_size=fs,
+                    )
+                )
+        if attachments:
+            await self._repo.create_attachments(attachments)
+        return attachments
+
     async def list_messages(
         self,
         session_id: uuid.UUID,
@@ -121,7 +252,7 @@ class MessageService:
             session_id: UUID of the game session.
             current_user: The authenticated user making the request.
             pagination: Page number and page size.
-            order: Sort direction for sequence -- ``"asc"`` or ``"desc"``.
+            order: Sort direction -- ``"asc"`` or ``"desc"``.
 
         Returns:
             Tuple of (messages with relations, total count).

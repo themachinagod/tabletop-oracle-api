@@ -1,9 +1,9 @@
-"""Pydantic schemas for Message, Citation, and ContextAttachment responses.
+"""Pydantic schemas for Message submission, history response, and cancellation.
 
-Covers response schemas for the message history and cancellation endpoints.
-Citations are included on ai_answer messages; context attachments on
-user_question messages. All field types match the ORM models and F001
-design conventions.
+Covers request schemas for message submission (POST) and response schemas
+for message history (GET) and cancellation (DELETE). Citations are included
+on ai_answer messages; context attachments on user_question messages. All
+field types match the ORM models and F001 design conventions.
 """
 
 from __future__ import annotations
@@ -12,6 +12,37 @@ import uuid  # noqa: TC003
 from datetime import datetime  # noqa: TC003
 
 from pydantic import BaseModel, Field
+
+# ---------------------------------------------------------------------------
+# Request schemas (message submission)
+# ---------------------------------------------------------------------------
+
+
+class ContextAttachmentRequest(BaseModel):
+    """A context attachment in the message submission request.
+
+    Attributes:
+        type: Attachment type -- ``"text"`` or ``"image"``.
+        content: Inline text content (for text type).
+        file_name: Original file name (for image type).
+    """
+
+    type: str = Field(..., pattern=r"^(text|image)$")
+    content: str | None = None
+    file_name: str | None = None
+
+
+class MessageSubmitRequest(BaseModel):
+    """Request schema for submitting a player message.
+
+    Attributes:
+        content: The question text. Non-empty, max 10000 chars.
+        context_attachments: Optional context attachments.
+    """
+
+    content: str = Field(..., min_length=1, max_length=10000)
+    context_attachments: list[ContextAttachmentRequest] = Field(default_factory=list)
+
 
 # ---------------------------------------------------------------------------
 # Response schemas
