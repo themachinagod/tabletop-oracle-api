@@ -16,6 +16,11 @@ from tabletop_oracle.services.ingestion.chunking import (
     ChunkingStrategy,
     SectionAwareChunkingStrategy,
 )
+from tabletop_oracle.services.ingestion.handoff import (
+    KGHandoffPayload,
+    KGHandoffService,
+    StubKGHandoffService,
+)
 from tabletop_oracle.services.ingestion.models import (
     StructureResult,
 )
@@ -227,28 +232,55 @@ class ChunkingStage(PipelineStageBase):
 class KGHandoffStage(PipelineStageBase):
     """Hands off processed chunks to the Knowledge Graph engine.
 
-    Stub implementation — logs the handoff. Real KG integration is task #34.
+    Delegates to a pluggable ``KGHandoffService``. Defaults to the V1
+    stub that logs and returns. Replaced via DI when EPIC-003 delivers
+    the real KG integration.
+
+    Args:
+        service: KG handoff service implementation. Defaults to
+            ``StubKGHandoffService()``.
     """
+
+    def __init__(self, service: KGHandoffService | None = None) -> None:
+        self._service: KGHandoffService = service or StubKGHandoffService()
 
     @property
     def name(self) -> str:
         return "kg_handoff"
 
     def execute(self, context: PipelineContext) -> None:
-        """Hand off chunks to the KG engine.
+        """Build a KGHandoffPayload and delegate to the KG service.
+
+        Runs the async service method synchronously via asyncio.run()
+        because the pipeline executes in Celery's sync prefork pool.
 
         Args:
             context: Pipeline context with chunks set.
 
         Raises:
             RuntimeError: If chunks list is empty.
+            KGIngestionError: If the KG service fails.
         """
+        import asyncio
+
         if not context.chunks:
             msg = "Cannot hand off to KG: no chunks produced"
             raise RuntimeError(msg)
 
+        payload = KGHandoffPayload(
+            document_id=context.document_id,
+            version_id=context.version_id,
+            game_id=context.game_id,
+            document_type=context.document_type,
+            expansion_id=context.expansion_id,
+            chunks=tuple(context.chunks),
+            replaces_version_id=context.replaces_version_id,
+        )
+
         logger.info(
-            "KG handoff stub: document_id=%s, chunk_count=%d",
+            "KG handoff: document_id=%s, chunk_count=%d",
             context.document_id,
             len(context.chunks),
         )
+
+        asyncio.run(self._service.ingest_document(payload))

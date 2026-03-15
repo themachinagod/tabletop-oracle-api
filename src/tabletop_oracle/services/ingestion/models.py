@@ -151,9 +151,13 @@ class PipelineContext:
     Attributes:
         document_id: UUID of the document being processed.
         version_id: UUID of the specific version to process.
+        game_id: UUID of the owning game (for KG scoping).
+        document_type: Document classification (e.g. core_rules, faq).
+        expansion_id: Expansion association (optional, for KG filtering).
         file_path: Blob store path to the document file.
         document_format: File format identifier.
         file_size: File size in bytes.
+        replaces_version_id: Previous version ID if this is a replacement.
         parse_result: Output from the extraction stage.
         structure_result: Output from the structure detection stage.
         chunks: Output from the chunking stage.
@@ -161,9 +165,13 @@ class PipelineContext:
 
     document_id: UUID
     version_id: UUID
+    game_id: UUID
+    document_type: str
+    expansion_id: UUID | None
     file_path: str
     document_format: str
     file_size: int
+    replaces_version_id: UUID | None = None
     parse_result: ParseResult | None = None
     structure_result: StructureResult | None = None
     chunks: list[Chunk] = field(default_factory=list)

@@ -167,6 +167,9 @@ class IngestionPipeline:
         return PipelineContext(
             document_id=document_id,
             version_id=version_id,
+            game_id=doc.game_id,
+            document_type=doc.type.value,
+            expansion_id=doc.expansion_id,
             file_path=version.file_path,
             document_format=doc.format.value,
             file_size=version.file_size,
