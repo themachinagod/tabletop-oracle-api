@@ -32,7 +32,7 @@ import sys
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from sqlalchemy.ext.asyncio import AsyncSession
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
     from tabletop_oracle.services.seed_service import SeedResult, SeedService
 
@@ -87,7 +87,7 @@ def _format_result(result: SeedResult) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _get_session_factory():
+def _get_session_factory() -> async_sessionmaker[AsyncSession]:
     """Import and return the async session factory.
 
     Deferred import avoids loading the database module at CLI parse time,
