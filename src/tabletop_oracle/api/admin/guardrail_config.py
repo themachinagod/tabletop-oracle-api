@@ -11,6 +11,7 @@ Endpoints:
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Depends, Request
 
@@ -18,13 +19,15 @@ from tabletop_oracle.api.deps import DbSession  # noqa: TC001
 from tabletop_oracle.api.response import ok
 from tabletop_oracle.auth.dependencies import require_role
 from tabletop_oracle.schemas.common import DataEnvelope  # noqa: TC001
-from tabletop_oracle.models.guardrail import GuardrailConfig
 from tabletop_oracle.schemas.guardrail_config import (
     GuardrailConfigResponse,
     GuardrailConfigUpdate,
 )
 from tabletop_oracle.services.model.guardrail import GuardrailService
 from tabletop_oracle.services.model.token_usage import TokenUsageService
+
+if TYPE_CHECKING:
+    from tabletop_oracle.models.guardrail import GuardrailConfig
 
 logger = logging.getLogger(__name__)
 
