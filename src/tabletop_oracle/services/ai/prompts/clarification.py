@@ -51,9 +51,7 @@ def build_clarification_messages(ctx: PipelineContext) -> list[dict[str, Any]]:
     game_name = _resolve_game_name(ctx)
     ambiguity_reason = ctx.ambiguity_reason or "Question is ambiguous"
     suggestion_line = (
-        f"Draft suggestion: {ctx.suggested_clarification}\n"
-        if ctx.suggested_clarification
-        else ""
+        f"Draft suggestion: {ctx.suggested_clarification}\n" if ctx.suggested_clarification else ""
     )
     conversation_section = _build_conversation_section(ctx)
 
