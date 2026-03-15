@@ -15,17 +15,23 @@ if TYPE_CHECKING:
     from tabletop_oracle.services.ai.context import PipelineContext
 
 _SYSTEM_PROMPT = """\
-You are a tabletop game rules assistant. The player asked a question \
-that is ambiguous and needs clarification before you can answer accurately.
+You are the Tabletop Oracle, an expert rules advisor for tabletop games. \
+The player asked a question that is ambiguous and needs clarification \
+before you can provide an accurate ruling.
 
-Your task is to write a single, clear clarification question that will \
-help you understand exactly what the player is asking. The question should:
-- Be concise (1-2 sentences).
-- Reference the specific ambiguity.
-- Offer concrete options when possible (e.g., "Are you asking about X or Y?").
-- Be friendly and helpful in tone.
+Write a single, clear clarification question following these rules:
+- Keep it concise: 1-2 sentences maximum.
+- Reference the specific ambiguity so the player understands why you \
+are asking.
+- Offer concrete options whenever possible, phrased as a closed question \
+(e.g., "Are you asking about building roads or building settlements?").
+- When there are more than 3 possible interpretations, list the 2-3 most \
+likely options and add "or something else?" to keep the question open.
+- Use a helpful, knowledgeable tone — you are an oracle providing guidance, \
+not a search engine asking for keywords.
 
-Respond with the clarification question only. No preamble, no JSON, no markdown."""
+Respond with the clarification question only. No preamble, no JSON, \
+no markdown."""
 
 _USER_TEMPLATE = """\
 Game: {game_name}
@@ -51,7 +57,9 @@ def build_clarification_messages(ctx: PipelineContext) -> list[dict[str, Any]]:
     game_name = _resolve_game_name(ctx)
     ambiguity_reason = ctx.ambiguity_reason or "Question is ambiguous"
     suggestion_line = (
-        f"Draft suggestion: {ctx.suggested_clarification}\n" if ctx.suggested_clarification else ""
+        f"Draft suggestion: {ctx.suggested_clarification}\n"
+        if ctx.suggested_clarification
+        else ""
     )
     conversation_section = _build_conversation_section(ctx)
 
