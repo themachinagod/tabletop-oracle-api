@@ -12,6 +12,7 @@ from tabletop_oracle.services.model.slot_repository import ModelSlotRepository
 from tabletop_oracle.services.model.slot_service import ModelSlotService
 from tabletop_oracle.services.model.token_usage import (
     TokenAttribution,
+    TokenUsageService,
     TokenUsageServiceProtocol,
 )
 from tabletop_oracle.services.model.types import CompletionResult, GuardrailCheckResult
@@ -25,5 +26,6 @@ __all__ = [
     "ModelSlotRepository",
     "ModelSlotService",
     "TokenAttribution",
+    "TokenUsageService",
     "TokenUsageServiceProtocol",
 ]
