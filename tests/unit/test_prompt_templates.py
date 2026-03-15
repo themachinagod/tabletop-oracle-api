@@ -133,9 +133,7 @@ def _make_synthesis_ctx(**kwargs: Any) -> MagicMock:
 def _make_confidence_ctx(**kwargs: Any) -> MagicMock:
     """Build a context for confidence scoring prompts."""
     ctx = _make_base_ctx(**kwargs)
-    ctx.answer_text = (
-        "You can trade resources with other players on your turn [1]."
-    )
+    ctx.answer_text = "You can trade resources with other players on your turn [1]."
     ctx.retrieval_results = [_make_retrieval_result()]
     ctx.traversal_results = []
     return ctx

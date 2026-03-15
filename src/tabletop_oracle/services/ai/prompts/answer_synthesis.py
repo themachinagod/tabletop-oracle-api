@@ -159,14 +159,8 @@ def _build_knowledge_section(
     for i, result in enumerate(retrieval_results, start=1):
         source_label = _format_source_label(result.source)
         doc_type = result.source.get("document_type", "unknown")
-        authority = (
-            " [authoritative]"
-            if result.source.get("is_authoritative")
-            else ""
-        )
-        lines.append(
-            f"[{i}] ({doc_type}{authority}) {source_label}: {result.content}"
-        )
+        authority = " [authoritative]" if result.source.get("is_authoritative") else ""
+        lines.append(f"[{i}] ({doc_type}{authority}) {source_label}: {result.content}")
 
     if traversal_results:
         lines.append("")

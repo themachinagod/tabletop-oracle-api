@@ -116,14 +116,9 @@ def _build_sources_section(ctx: PipelineContext) -> str:
         excerpt = result.content[:200]
         doc_type = getattr(result, "source", {}).get("document_type", "unknown")
         authority = (
-            ", authoritative"
-            if getattr(result, "source", {}).get("is_authoritative")
-            else ""
+            ", authoritative" if getattr(result, "source", {}).get("is_authoritative") else ""
         )
-        lines.append(
-            f"{i}. [score={result.score:.2f}, type={doc_type}{authority}] "
-            f"{excerpt}"
-        )
+        lines.append(f"{i}. [score={result.score:.2f}, type={doc_type}{authority}] {excerpt}")
 
     offset = len(ctx.retrieval_results)
     for i, traversal in enumerate(ctx.traversal_results, start=offset + 1):
