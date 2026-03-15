@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import Select, case, func, literal_column, select, text
 
 from tabletop_oracle.models.document import Document
-from tabletop_oracle.models.enums import DocumentStatus
+from tabletop_oracle.models.enums import DocumentStatus, GameComplexity
 from tabletop_oracle.models.expansion import Expansion
 from tabletop_oracle.models.game import Game, GameTag
 from tabletop_oracle.repositories.base import BaseRepository
@@ -70,6 +70,54 @@ class GameRepository(BaseRepository[Game]):
         stmt = select(Game).options(selectinload(Game.tags)).where(Game.id == game_id)
         result = await self._session.execute(stmt)
         return result.scalar_one_or_none()
+
+    async def get_detail(self, game_id: uuid.UUID) -> dict[str, Any] | None:
+        """Fetch a game with tags, expansions, and aggregated counts.
+
+        Returns all data needed for the GameDetailResponse: the game entity,
+        its expansions (all, including archived), document count (processed
+        only), and expansion count (active only).
+
+        Args:
+            game_id: UUID of the game to retrieve.
+
+        Returns:
+            Dict with keys ``game``, ``expansions``, ``document_count``,
+            ``expansion_count``, and ``tags``; or None if not found.
+        """
+        from sqlalchemy.orm import selectinload
+
+        stmt = (
+            select(Game)
+            .options(selectinload(Game.tags), selectinload(Game.expansions))
+            .where(Game.id == game_id)
+        )
+        result = await self._session.execute(stmt)
+        game = result.scalar_one_or_none()
+        if game is None:
+            return None
+
+        # Document count (processed only)
+        doc_count_stmt = (
+            select(func.count())
+            .select_from(Document)
+            .where(Document.game_id == game_id, Document.status == DocumentStatus.PROCESSED)
+        )
+        doc_result = await self._session.execute(doc_count_stmt)
+        doc_count: int = doc_result.scalar_one()
+
+        # Active expansion count
+        active_exp_count = sum(1 for exp in game.expansions if exp.archived_at is None)
+
+        tag_list = sorted(t.tag for t in game.tags)
+
+        return {
+            "game": game,
+            "expansions": list(game.expansions),
+            "document_count": doc_count,
+            "expansion_count": active_exp_count,
+            "tags": tag_list,
+        }
 
     async def list_with_summary(
         self,
@@ -295,9 +343,6 @@ class GameRepository(BaseRepository[Game]):
 
         # Complexity (IN / OR logic)
         if filters.complexity:
-            # Convert StrEnum values to the ORM enum for comparison
-            from tabletop_oracle.models.enums import GameComplexity
-
             orm_values = [GameComplexity(c.value) for c in filters.complexity]
             query = query.where(Game.complexity.in_(orm_values))
 

@@ -75,15 +75,30 @@ class Document(MappedBase):
     )
     name: Mapped[str] = mapped_column(Text, nullable=False)
     type: Mapped[DocumentType] = mapped_column(
-        Enum(DocumentType, native_enum=True, name="document_type"),
+        Enum(
+            DocumentType,
+            native_enum=True,
+            name="document_type",
+            values_callable=lambda e: [m.value for m in e],
+        ),
         nullable=False,
     )
     format: Mapped[DocumentFormat] = mapped_column(
-        Enum(DocumentFormat, native_enum=True, name="document_format"),
+        Enum(
+            DocumentFormat,
+            native_enum=True,
+            name="document_format",
+            values_callable=lambda e: [m.value for m in e],
+        ),
         nullable=False,
     )
     status: Mapped[DocumentStatus] = mapped_column(
-        Enum(DocumentStatus, native_enum=True, name="document_status"),
+        Enum(
+            DocumentStatus,
+            native_enum=True,
+            name="document_status",
+            values_callable=lambda e: [m.value for m in e],
+        ),
         nullable=False,
         server_default="uploaded",
     )

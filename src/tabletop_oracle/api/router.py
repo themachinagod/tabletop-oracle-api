@@ -8,6 +8,7 @@ from fastapi import APIRouter
 
 from tabletop_oracle.api.auth import router as auth_router
 from tabletop_oracle.api.documents.router import router as documents_router
+from tabletop_oracle.api.games import router as games_router
 from tabletop_oracle.api.health import router as health_router
 from tabletop_oracle.api.sse import router as sse_router
 
@@ -22,9 +23,11 @@ api_router.include_router(auth_router, prefix="/auth")
 # SSE streaming — no prefix; paths are resource-scoped (/sessions/..., /documents/...)
 api_router.include_router(sse_router)
 
+# Games — all endpoints require authentication; writes require curator role
+api_router.include_router(games_router, prefix="/games")
+
 # Documents — nested under /games/{game_id}/documents, curator role required
 api_router.include_router(documents_router, prefix="/games/{game_id}/documents")
 
-# api_router.include_router(games_router, prefix="/games")     # authenticated
 # api_router.include_router(sessions_router, prefix="/sessions")  # authenticated
 # api_router.include_router(admin_router, prefix="/admin")     # curator role

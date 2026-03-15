@@ -47,19 +47,34 @@ class User(MappedBase):
         server_default=text("gen_random_uuid()"),
     )
     oauth_provider: Mapped[OAuthProvider] = mapped_column(
-        Enum(OAuthProvider, native_enum=True, name="oauth_provider"),
+        Enum(
+            OAuthProvider,
+            native_enum=True,
+            name="oauth_provider",
+            values_callable=lambda e: [m.value for m in e],
+        ),
         nullable=False,
     )
     oauth_subject_id: Mapped[str | None] = mapped_column(Text, nullable=True)
     email: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
     display_name: Mapped[str] = mapped_column(Text, nullable=False)
     role: Mapped[UserRole] = mapped_column(
-        Enum(UserRole, native_enum=True, name="user_role"),
+        Enum(
+            UserRole,
+            native_enum=True,
+            name="user_role",
+            values_callable=lambda e: [m.value for m in e],
+        ),
         nullable=False,
         server_default="player",
     )
     status: Mapped[UserStatus] = mapped_column(
-        Enum(UserStatus, native_enum=True, name="user_status"),
+        Enum(
+            UserStatus,
+            native_enum=True,
+            name="user_status",
+            values_callable=lambda e: [m.value for m in e],
+        ),
         nullable=False,
         server_default="active",
     )

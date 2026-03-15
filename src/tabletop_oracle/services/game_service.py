@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from tabletop_oracle.errors.exceptions import ConflictError, NotFoundError, ValidationError
+from tabletop_oracle.models.enums import GameComplexity
 
 if TYPE_CHECKING:
     import uuid
@@ -74,6 +75,27 @@ class GameService:
             await self._repo.set_tags(game.id, tags)
 
         return game
+
+    async def get_game_detail(self, game_id: uuid.UUID) -> dict[str, Any]:
+        """Fetch a game with expansions, tags, and aggregated counts.
+
+        Returns the full detail needed for the GameDetailResponse, including
+        inline expansions and document/expansion counts.
+
+        Args:
+            game_id: UUID of the game to retrieve.
+
+        Returns:
+            Dict with keys ``game``, ``expansions``, ``document_count``,
+            ``expansion_count``, and ``tags``.
+
+        Raises:
+            NotFoundError: If no game exists with the given ID.
+        """
+        detail = await self._repo.get_detail(game_id)
+        if detail is None:
+            raise NotFoundError("Game", str(game_id))
+        return detail
 
     async def get_game(self, game_id: uuid.UUID) -> Game:
         """Fetch a game by ID or raise NotFoundError.
@@ -256,24 +278,21 @@ class GameService:
     @staticmethod
     def _to_orm_complexity(
         complexity: Any,
-    ) -> Any:
-        """Convert schema complexity enum to ORM enum if needed.
+    ) -> GameComplexity | None:
+        """Convert schema complexity to an ORM GameComplexity enum member.
 
-        The Pydantic schema uses GameComplexityFilter (StrEnum) while the
-        ORM model uses GameComplexity (enum.Enum). This bridges the gap.
+        Maps from the Pydantic schema's GameComplexityFilter (StrEnum)
+        to the ORM layer's GameComplexity (enum.Enum) by matching on
+        the lowercase string value.
 
         Args:
             complexity: A GameComplexityFilter value, None, or UNSET.
 
         Returns:
-            The corresponding GameComplexity ORM enum value, or None.
+            The corresponding GameComplexity enum member, or None.
         """
         if complexity is None:
             return None
 
-        from tabletop_oracle.models.enums import GameComplexity
-        from tabletop_oracle.schemas.game import GameComplexityFilter
-
-        if isinstance(complexity, GameComplexityFilter):
-            return GameComplexity(complexity.value)
-        return complexity
+        value = complexity.value if hasattr(complexity, "value") else str(complexity)
+        return GameComplexity(value)

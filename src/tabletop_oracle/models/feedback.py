@@ -53,7 +53,12 @@ class PlayerFeedback(MappedBase):
         nullable=False,
     )
     rating: Mapped[FeedbackRating] = mapped_column(
-        Enum(FeedbackRating, native_enum=True, name="feedback_rating"),
+        Enum(
+            FeedbackRating,
+            native_enum=True,
+            name="feedback_rating",
+            values_callable=lambda e: [m.value for m in e],
+        ),
         nullable=False,
     )
     comment: Mapped[str | None] = mapped_column(Text, nullable=True)
