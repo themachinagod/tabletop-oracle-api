@@ -87,7 +87,7 @@ class TestModelImports:
         assert Base.metadata is MappedBase.metadata
 
     def test_all_tables_registered_in_metadata(self) -> None:
-        """All 17 tables are registered in the shared metadata."""
+        """All 23 tables are registered in the shared metadata."""
         expected_tables = {
             "auth_sessions",
             "users",
@@ -106,6 +106,12 @@ class TestModelImports:
             "model_slots",
             "token_usage_log",
             "guardrail_config",
+            "kg_concepts",
+            "kg_concept_sources",
+            "kg_associations",
+            "kg_association_sources",
+            "concept_embeddings",
+            "kg_audit_log",
         }
         actual_tables = set(MappedBase.metadata.tables.keys())
         assert expected_tables == actual_tables
