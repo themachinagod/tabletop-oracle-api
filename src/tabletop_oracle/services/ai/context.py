@@ -95,6 +95,7 @@ class PipelineContext:
         clarification_round: Current clarification round (0, 1, or 2).
         retrieval_results: Knowledge retrieved from KG.
         traversal_results: Association traversal results.
+        knowledge_insufficient: True when KG retrieval returned zero results.
         answer_text: Generated answer text.
         citations: Assembled citation records.
         confidence_score: Self-assessed confidence value.
@@ -122,6 +123,7 @@ class PipelineContext:
     # Populated by KnowledgeRetrievalStage
     retrieval_results: list[RetrievalResult] = field(default_factory=list)
     traversal_results: list[TraversalResult] = field(default_factory=list)
+    knowledge_insufficient: bool = False
 
     # Populated by AnswerSynthesisStage
     answer_text: str = ""
