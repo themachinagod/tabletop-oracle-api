@@ -206,3 +206,52 @@ class TokenUsageService:
         )
         result = await self._db.execute(stmt)
         return int(result.scalar_one())
+
+    async def get_daily_query_count(self) -> int:
+        """Get number of user_question messages created today (UTC).
+
+        Counts all ``user_question`` messages from midnight UTC today
+        to now. Used by ``GuardrailService`` for daily query budget
+        enforcement.
+
+        Returns:
+            Number of user_question messages today, or 0 if none.
+        """
+        today_start = datetime.now(UTC).replace(
+            hour=0,
+            minute=0,
+            second=0,
+            microsecond=0,
+        )
+        tomorrow_start = today_start + timedelta(days=1)
+        stmt = select(func.count()).where(
+            Message.type == MessageType.USER_QUESTION,
+            Message.created_at >= today_start,
+            Message.created_at < tomorrow_start,
+        )
+        result = await self._db.execute(stmt)
+        return int(result.scalar_one())
+
+    async def get_query_model_call_count(
+        self,
+        session_id: UUID,
+        message_id: UUID,
+    ) -> int:
+        """Get number of model calls for a specific query.
+
+        Counts ``token_usage_log`` entries matching the given message.
+        Used by ``GuardrailService`` for per-query model call limits.
+
+        Args:
+            session_id: The session containing the query (unused in the
+                query but kept for API consistency with guardrail context).
+            message_id: The message to count model calls for.
+
+        Returns:
+            Number of model calls for the message, or 0 if none.
+        """
+        stmt = select(func.count()).where(
+            TokenUsageLog.message_id == message_id,
+        )
+        result = await self._db.execute(stmt)
+        return int(result.scalar_one())
