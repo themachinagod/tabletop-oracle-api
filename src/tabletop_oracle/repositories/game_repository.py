@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import Select, case, func, literal_column, select, text
 
 from tabletop_oracle.models.document import Document
-from tabletop_oracle.models.enums import DocumentStatus
+from tabletop_oracle.models.enums import DocumentStatus, GameComplexity
 from tabletop_oracle.models.expansion import Expansion
 from tabletop_oracle.models.game import Game, GameTag
 from tabletop_oracle.repositories.base import BaseRepository
@@ -101,7 +101,7 @@ class GameRepository(BaseRepository[Game]):
         doc_count_stmt = (
             select(func.count())
             .select_from(Document)
-            .where(Document.game_id == game_id, Document.status == DocumentStatus.PROCESSED.value)
+            .where(Document.game_id == game_id, Document.status == DocumentStatus.PROCESSED)
         )
         doc_result = await self._session.execute(doc_count_stmt)
         doc_count: int = doc_result.scalar_one()
@@ -153,7 +153,7 @@ class GameRepository(BaseRepository[Game]):
                 Document.game_id,
                 func.count().label("doc_count"),
             )
-            .where(Document.status == DocumentStatus.PROCESSED.value)
+            .where(Document.status == DocumentStatus.PROCESSED)
             .group_by(Document.game_id)
             .subquery()
         )
@@ -343,9 +343,8 @@ class GameRepository(BaseRepository[Game]):
 
         # Complexity (IN / OR logic)
         if filters.complexity:
-            # Use string values directly to avoid asyncpg enum serialization issues
-            complexity_values = [c.value for c in filters.complexity]
-            query = query.where(Game.complexity.in_(complexity_values))
+            orm_values = [GameComplexity(c.value) for c in filters.complexity]
+            query = query.where(Game.complexity.in_(orm_values))
 
         # Tags (AND logic via correlated subqueries)
         if filters.tags:

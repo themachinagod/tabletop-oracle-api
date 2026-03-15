@@ -211,7 +211,7 @@ class TestCreateGame:
         await svc.create_game(data, uuid.uuid4())
 
         created_game = repo.create.call_args[0][0]
-        assert created_game.complexity == "heavy"
+        assert created_game.complexity == GameComplexity.HEAVY
 
     @pytest.mark.asyncio
     async def test_create_game_delegates_to_repository(self) -> None:
@@ -457,7 +457,7 @@ class TestUpdateGame:
 
         await svc.update_game(game_id, data)
 
-        assert game_mock.complexity == "light"
+        assert game_mock.complexity == GameComplexity.LIGHT
 
     @pytest.mark.asyncio
     async def test_update_game_raises_not_found(self) -> None:

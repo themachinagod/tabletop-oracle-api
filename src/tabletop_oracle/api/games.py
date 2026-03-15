@@ -320,12 +320,12 @@ async def update_game(
         NotFoundError: If the game does not exist.
     """
     service = _get_game_service(db)
-    game = await service.update_game(game_id, body)
+    await service.update_game(game_id, body)
 
     # Expire all cached objects to force reload of tags after set_tags
     # (expire on game alone leaves stale GameTag objects in identity map)
     db.expire_all()
-    game = await service.get_game(game.id)
+    game = await service.get_game(game_id)
     return ok(_game_to_response(game), request)
 
 
@@ -395,4 +395,3 @@ async def restore_game(
     # Re-fetch to get tags
     game = await service.get_game(game.id)
     return ok(_game_to_response(game), request)
-
