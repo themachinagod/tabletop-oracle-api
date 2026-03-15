@@ -2,9 +2,8 @@
 
 Provides paginated message listing for a session, ordered by sequence,
 with citations and context attachments eagerly loaded. Also provides
-single-message lookup and cancellation flag setting for the query
-cancellation flow. Session existence validation is included to support
-ownership checks upstream.
+single-message lookup, cancellation flag setting, sequence assignment,
+and creation operations for messages and context attachments.
 """
 
 from __future__ import annotations
@@ -14,7 +13,7 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import Select, func, select
 from sqlalchemy.orm import selectinload
 
-from tabletop_oracle.models.message import Message
+from tabletop_oracle.models.message import ContextAttachment, Message
 from tabletop_oracle.models.session import Session
 
 if TYPE_CHECKING:
@@ -30,8 +29,8 @@ class MessageRepository:
     """Data access for Message entities within a game session.
 
     Provides session-scoped paginated queries that eagerly load citations
-    and context attachments, single-message retrieval, and cancellation
-    flag updates.
+    and context attachments, single-message retrieval, cancellation
+    flag updates, sequence assignment, and creation operations.
 
     Args:
         session: SQLAlchemy async session for database operations.
@@ -100,6 +99,60 @@ class MessageRepository:
         cancelled_at = result.scalar_one_or_none()
         return cancelled_at is not None
 
+    async def get_next_sequence(self, session_id: uuid.UUID) -> int:
+        """Return the next sequence number for a session.
+
+        Calculates max(sequence) + 1, or 1 if no messages exist.
+
+        Args:
+            session_id: The game session UUID.
+
+        Returns:
+            The next sequence number.
+        """
+        stmt = select(func.coalesce(func.max(Message.sequence), 0)).where(
+            Message.session_id == session_id,
+        )
+        result = await self._session.execute(stmt)
+        current_max: int = result.scalar_one()
+        return current_max + 1
+
+    async def create_message(self, message: Message) -> Message:
+        """Persist a new message and flush to assign server defaults.
+
+        Args:
+            message: The Message ORM instance to persist.
+
+        Returns:
+            The persisted message with server-generated fields populated.
+        """
+        self._session.add(message)
+        await self._session.flush()
+        await self._session.refresh(message)
+        return message
+
+    async def create_attachments(
+        self,
+        attachments: list[ContextAttachment],
+    ) -> list[ContextAttachment]:
+        """Persist context attachments in bulk.
+
+        Args:
+            attachments: List of ContextAttachment ORM instances.
+
+        Returns:
+            The persisted attachments with server-generated fields.
+        """
+        if not attachments:
+            return attachments
+
+        for attachment in attachments:
+            self._session.add(attachment)
+        await self._session.flush()
+        for attachment in attachments:
+            await self._session.refresh(attachment)
+        return attachments
+
     async def list_by_session(
         self,
         session_id: uuid.UUID,
@@ -117,7 +170,7 @@ class MessageRepository:
         Args:
             session_id: UUID of the game session.
             pagination: Page number and page size.
-            order: Sort direction for sequence -- ``"asc"`` or ``"desc"``.
+            order: Sort direction -- ``"asc"`` or ``"desc"``.
 
         Returns:
             Tuple of (messages with relations loaded, total count).
