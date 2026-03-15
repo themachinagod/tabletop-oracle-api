@@ -1,13 +1,15 @@
 """Base API router — aggregates all feature routers under /api/v1.
 
 All feature routers are included here. The top-level `api_router` is
-mounted once in main.py with the `/api/v1` prefix.
+mounted once in main.py with the ``/api/v1`` prefix.
 """
 
 from fastapi import APIRouter
 
 from tabletop_oracle.api.admin.guardrail_config import router as admin_guardrail_config_router
 from tabletop_oracle.api.admin.model_slots import router as admin_model_slots_router
+from tabletop_oracle.api.admin.quality import router as admin_quality_router
+from tabletop_oracle.api.admin.usage import router as admin_usage_router
 from tabletop_oracle.api.auth import router as auth_router
 from tabletop_oracle.api.documents.router import router as documents_router
 from tabletop_oracle.api.expansions import router as expansions_router
@@ -45,4 +47,7 @@ api_router.include_router(messages_router, prefix="/sessions")
 
 # Admin — curator-only endpoints
 api_router.include_router(admin_model_slots_router, prefix="/admin/model-slots")
+<<<<<<< HEAD
 api_router.include_router(admin_guardrail_config_router, prefix="/admin/guardrail-config")
+api_router.include_router(admin_usage_router, prefix="/admin/usage")
+api_router.include_router(admin_quality_router, prefix="/admin/quality")
