@@ -84,9 +84,7 @@ class TestStoreConceptEmbedding:
         concept_id = uuid.uuid4()
         new_embedding = [0.1, 0.2, 0.3, 0.4]
 
-        result = await store_concept_embedding(
-            db, concept_id, new_embedding, "new-model"
-        )
+        result = await store_concept_embedding(db, concept_id, new_embedding, "new-model")
 
         assert result is existing
         assert existing.model_id == "new-model"

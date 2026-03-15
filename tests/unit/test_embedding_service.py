@@ -47,10 +47,7 @@ def _make_embedding_response(
     if embeddings is None:
         embeddings = [[0.1, 0.2, 0.3, 0.4]]
     return {
-        "data": [
-            {"index": i, "embedding": emb}
-            for i, emb in enumerate(embeddings)
-        ],
+        "data": [{"index": i, "embedding": emb} for i, emb in enumerate(embeddings)],
         "usage": {"prompt_tokens": prompt_tokens},
     }
 
@@ -206,9 +203,7 @@ class TestEmbedBatch:
         response = _make_embedding_response([embedding])
         client = _mock_http_client(response)
 
-        with patch(
-            "tabletop_oracle.services.kg.embeddings._MAX_BATCH_SIZE", 2
-        ):
+        with patch("tabletop_oracle.services.kg.embeddings._MAX_BATCH_SIZE", 2):
             service = EmbeddingService(repo, http_client=client, embedding_dim=_DIM)
             concepts = [_make_concept(f"C{i}") for i in range(5)]
             result = await service.embed_batch(concepts)
@@ -381,9 +376,7 @@ class TestDimensionValidation:
     @pytest.mark.asyncio
     async def test_correct_dimension_passes(self) -> None:
         repo = _mock_model_slot_repo(_make_slot())
-        client = _mock_http_client(
-            _make_embedding_response([[0.1, 0.2, 0.3, 0.4]])
-        )
+        client = _mock_http_client(_make_embedding_response([[0.1, 0.2, 0.3, 0.4]]))
 
         service = EmbeddingService(repo, http_client=client, embedding_dim=_DIM)
         result = await service.embed_concept(_make_concept())
@@ -400,9 +393,7 @@ class TestExceptions:
     """Tests for exception attributes."""
 
     def test_embedding_error_carries_provider_and_model(self) -> None:
-        err = EmbeddingError(
-            "test error", provider="openai", model_id="text-embedding-3-small"
-        )
+        err = EmbeddingError("test error", provider="openai", model_id="text-embedding-3-small")
         assert err.provider == "openai"
         assert err.model_id == "text-embedding-3-small"
         assert "test error" in str(err)
