@@ -322,8 +322,9 @@ async def update_game(
     service = _get_game_service(db)
     game = await service.update_game(game_id, body)
 
-    # Expire cached relationships to force reload of tags after set_tags
-    db.expire(game)
+    # Expire all cached objects to force reload of tags after set_tags
+    # (expire on game alone leaves stale GameTag objects in identity map)
+    db.expire_all()
     game = await service.get_game(game.id)
     return ok(_game_to_response(game), request)
 
