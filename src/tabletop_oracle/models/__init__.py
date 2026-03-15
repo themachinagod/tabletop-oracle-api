@@ -26,6 +26,14 @@ from tabletop_oracle.models.expansion import Expansion
 from tabletop_oracle.models.feedback import PlayerFeedback
 from tabletop_oracle.models.game import Game, GameTag
 from tabletop_oracle.models.guardrail import GuardrailConfig
+from tabletop_oracle.models.knowledge_graph import (
+    ConceptEmbedding,
+    KGAssociation,
+    KGAssociationSource,
+    KGAuditLog,
+    KGConcept,
+    KGConceptSource,
+)
 from tabletop_oracle.models.message import Citation, ContextAttachment, Message
 from tabletop_oracle.models.model_slot import ModelSlot, TokenUsageLog
 from tabletop_oracle.models.session import Session, SessionExpansion
@@ -35,6 +43,7 @@ __all__ = [
     "AuthSession",
     "Base",
     "Citation",
+    "ConceptEmbedding",
     "ContextAttachment",
     "ContextAttachmentType",
     "Document",
@@ -49,6 +58,11 @@ __all__ = [
     "GameComplexity",
     "GameTag",
     "GuardrailConfig",
+    "KGAssociation",
+    "KGAssociationSource",
+    "KGAuditLog",
+    "KGConcept",
+    "KGConceptSource",
     "MappedBase",
     "Message",
     "MessageType",
