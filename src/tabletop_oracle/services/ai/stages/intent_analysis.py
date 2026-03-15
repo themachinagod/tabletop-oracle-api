@@ -169,5 +169,7 @@ def _apply_to_context(
     """
     ctx.intent = parsed.get("intent", "")
     ctx.is_ambiguous = bool(parsed.get("is_ambiguous", False))
+    ctx.ambiguity_reason = parsed.get("ambiguity_reason")
+    ctx.suggested_clarification = parsed.get("suggested_clarification")
     ctx.token_usage += result.input_tokens + result.output_tokens
     ctx.model_call_count += 1
